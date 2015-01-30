@@ -1,5 +1,8 @@
 #MarkWoo's Personal Blog
 
+##20150130
+>* update fix _config.yml link problam
+
 #Clean Blog by Start Bootstrap - Jekyll Version
 
 The official Jekyll version of the Clean Blog theme by [Start Bootstrap](http://startbootstrap.com/).

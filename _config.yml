@@ -3,7 +3,7 @@ title: Clean Blog
 header-img: img/home-bg.jpg
 email: wcgwuxinwei@gmail.com
 description: "Mark Woo's Blog For Test"
-baseurl: "/"
+baseurl: ""
 url: "http://wuxinwei.org"
 twitter_username: SBootstrap
 github_username:  davidtmiller

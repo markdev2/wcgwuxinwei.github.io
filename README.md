@@ -2,6 +2,7 @@
 
 ##20150130
 >* update fix _config.yml link problam
+>* update some private info
 
 #Clean Blog by Start Bootstrap - Jekyll Version
 

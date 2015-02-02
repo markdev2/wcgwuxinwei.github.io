@@ -10,7 +10,8 @@ github_username:  davidtmiller
 facebook_username:  IronSummitMedia
 
 # Build settings
-markdown: kramdown
+# markdown: kramdown
+markdown: redcapet 2
 highlighter: pygments
 permalink: pretty
 paginate: 5

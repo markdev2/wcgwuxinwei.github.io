@@ -4,6 +4,9 @@
 >* update fix _config.yml link problam
 >* update some private info
 
+##20150202
+>* update test Markdown text
+
 #Clean Blog by Start Bootstrap - Jekyll Version
 
 The official Jekyll version of the Clean Blog theme by [Start Bootstrap](http://startbootstrap.com/).

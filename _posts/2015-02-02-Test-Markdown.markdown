@@ -15,12 +15,8 @@ header-img: "img/post-bg-01.jpg"
 
 #Test Code
 
-```c++
-
 #include <stdio.h>
 int main(int argc, char** argv) { //Test Code
 	print("Hello World!");
 	return 0;
 }
-
-```

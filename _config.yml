@@ -10,9 +10,9 @@ github_username:  davidtmiller
 facebook_username:  IronSummitMedia
 
 # Build settings
-# markdown: kramdown
-markdown: redcapet 2
-# highlighter: pygments
+markdown: kramdown
+# markdown: redcapet 2
+highlighter: pygments
 permalink: pretty
 paginate: 5
 exclude: ["less","node_modules","Gruntfile.js","package.json","README.md"]

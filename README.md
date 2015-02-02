@@ -3,6 +3,7 @@
 ##20150130
 >* update fix _config.yml link problam
 >* update some private info
+>* fix code highlighting
 
 ##20150202
 >* update test Markdown text, _post/2015

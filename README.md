@@ -5,7 +5,7 @@
 >* update some private info
 
 ##20150202
->* update test Markdown text
+>* update test Markdown text, _post/2015
 
 #Clean Blog by Start Bootstrap - Jekyll Version
 

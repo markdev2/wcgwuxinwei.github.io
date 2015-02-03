@@ -31,6 +31,6 @@
     <![endif]-->
 
     <!-- google Prettify CSS -->
-	<link rel="stylesheet" href="/css/prettify.css">
+    <link rel="stylesheet" href="{{ "/css/prettify.css" | prepend: site.baseurl }}">
 
 </head>

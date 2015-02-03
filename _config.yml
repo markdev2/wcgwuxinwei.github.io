@@ -6,12 +6,12 @@ description: "Mark Woo's Blog For Test"
 baseurl: ""
 url: "http://wuxinwei.org"
 twitter_username: SBootstrap
-github_username:  davidtmiller
+github_username:  wuxinwei
 facebook_username:  IronSummitMedia
 
 # Build settings
-markdown: kramdown
-# markdown: redcapet 2
+# markdown: kramdown
+markdown: redcarpet
 highlighter: pygments
 permalink: pretty
 paginate: 5

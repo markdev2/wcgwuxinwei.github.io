@@ -1,13 +1,13 @@
 # Site settings
-title: Clean Blog
+title: Mark Woo Home
 header-img: img/home-bg.jpg
 email: wcgwuxinwei@gmail.com
-description: "Mark Woo's Blog For Test"
+description: "Mark Woo's Personal Blog"
 baseurl: ""
 url: "http://wuxinwei.org"
-twitter_username: SBootstrap
-github_username:  wuxinwei
-facebook_username:  IronSummitMedia
+twitter_username:   wcgwuxinwei
+github_username:    wuxinwei
+facebook_username:  mark.woo.1990
 
 # Build settings
 # markdown: kramdown

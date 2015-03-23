@@ -1,10 +1,10 @@
 ---
 layout:     post
-title:      "Test Markdown"
-subtitle:   "Test Markdown code"
-date:       2015-02-02 13:00::00
+title:      "通过反汇编一个简单的C程序，分析汇编代码理解计算机是如何工作的"
+subtitle:   "通过反汇编一个简单的C程序，分析汇编代码理解计算机是如何工作的"
+date:       2015-03-20 13:00::00
 author:     "MarkWoo"
-header-img: "img/post-bg-01.jpg"
+header-img: "img/home-bg.jpg"
 ---
 
 #通过反汇编一个简单的C程序，分析汇编代码理解计算机是如何工作的

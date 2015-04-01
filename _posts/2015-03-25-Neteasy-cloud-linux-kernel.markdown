@@ -61,8 +61,8 @@ asmlinkage __visible void __init start_kernel(void)
     /* Do the rest non-__init'ed, we're now alive */
 	rest_init();
 }
-
 ```
+
 - `init/main.c`
 - 以上为`start_kernel`函数的一个代码片段，在该函数之前的执行都是汇编，以C语言程序的思维来看，`start_kernel`就是整个Linux内核的“main”函数，即整个Linux内核的入口函数，在`start_kernel`中，开始有一个`set_task_stack_end_magic(&init_task)`,这个函数中间的形参`init_task`,通过寻找在`init/init_task.h`中找到了`struct task_struct init_task = INIT_TASK(init_task)`（struct task中保存进程的相关信息，类似PCB）,经过初始化`init_task`后，静态构造进程，这是Linux第一次拥有了进程，这就是后来的idle进程（pid为0），**从`start_kernel`之前的汇编代码到`start_kernel`执行，这里都会纳入idle进程的上下文**（之前的汇编代码就是为了idle进程的执行做准备）。
 - 最后`rest_init()`标志着Linux内核初始化完成，在`rest_init()`中开始产生**第一个真正意义上的进程**，也就是init进程（即进程号为1的进程,其他所有用户进程的祖先进程），接下来就对`rest_init()`部分做详细分析
@@ -100,6 +100,7 @@ static noinline void __init_refok rest_init(void)
 ```
 - `kernel/fork`
 - `kernel_thread(kernel_init, NULL, CLONE_FS)`，这里通过这个函数创建了init进程，该函数具体代码如下：
+
 ```c
 pid_t kernel_thread(int (*fn)(void *), void *arg, unsigned long flags)
 {
@@ -107,9 +108,11 @@ pid_t kernel_thread(int (*fn)(void *), void *arg, unsigned long flags)
 		(unsigned long)arg, NULL, NULL);
 }
 ```
+
 第一次参数为注册一个回调函数，`kernel_init`这个回调函数，`do_fork`是创建一个新的进程， 在此之中会为创建init进程进行各种工作，如初始化运行堆栈，调用相应的回掉函数等，通过回调`kernel_init`可以创建init进程，接下来具体分析下`kernel_init`
 
 ---
+
 ```c
 static int __ref kernel_init(void *unused)
 {
@@ -156,8 +159,10 @@ static int __ref kernel_init(void *unused)
 	      "See Linux Documentation/init.txt for guidance.");
 }
 ```
+
 - `init/main.c`
 - 在`kernel_init`中我们重点关注以下代码，在这段代码中实际上是通过`run_init_process`来执行`/sbin/init`,通过中断向量0x80（system_call）来从内核发起系统调用，如果`/sbin/init`调用失败，则会继续调用接下来的文件`/etc/init`,`/bin/init`,`/bin/sh`，
+
 ```c
 ...
 if (!try_to_run_init_process("/sbin/init") ||
@@ -183,6 +188,7 @@ schedule_preempt_disabled();
 cpu_startup_entry(CPUHP_ONLINE);
 ```
 - 这里的`cpu_startup_entry(CPUHP_ONLINE)`中的代码片段
+
 ```c
 void cpu_startup_entry(enum cpuhp_state state)
 {
@@ -204,6 +210,7 @@ static void cpu_idle_loop(void)
 		schedule_preempt_disabled();
 		...
 ```
+
 - 我们在这里看到一个`cpu_idle_loop()`，这里其中是一个死循环，而且从中可以看到CPU不断地进入idle状态不断的推出idle状态。
 - 从这里我们可以得到一个这样的结果并总结，**idle进程是一个唯一的内核态进程，init进程是第一个用户态进程**，idle进程在内核初始化的时候的工作就是创建init进程。
 

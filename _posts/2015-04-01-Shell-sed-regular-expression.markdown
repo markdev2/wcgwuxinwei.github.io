@@ -20,6 +20,7 @@ header-img: "img/home-bg.jpg"
 
 2. if条件判断
 首先看代码
+
     ```shell
     if [ ! -e "$website_dir" -o ! -e "$weblogin_dir" ]
     then
@@ -29,10 +30,12 @@ header-img: "img/home-bg.jpg"
         ...
     fi
     ```
+
 - 这里需要重点指出一些格式问题，初学者比较容易碰到的，`if`,`then`,`else`必须**单独一行，如果想同一行请用**`;`**隔开**，不然会报错，再者，`if`后面的条件框`[]`，在两端必须留有**空格**，每次一个判断选项，和一个逻辑符号之间必须**留一个空格**，最后`fi`结尾
 - `if`条件中的各种选项可以从其他搜索引擎中找到
 
 3. case条件选择
+
     ```shell
     case $1 in
         replace)
@@ -46,6 +49,7 @@ header-img: "img/home-bg.jpg"
             echo "restore: 恢复规则文件";;
     esac
     ```
+
 - `$1`指的是选择运行时的第一个输入参数，这里的输入参数指在terminal中输出的，这里固定`$0：运行脚本本本身文件名`，`$1：为其后的第一个参数`
 
 #Sed
@@ -54,9 +58,11 @@ sed 是一种在线编辑器，它一次处理一行内容。处理时，把当�
 
 ##结合实例使用
 首先sed的使用格式网络上都有比我详细的教程，各位可以随意google，这里我只专门将下我实际中遇到的一些比较棘手的问题
+
 ```shell
 sed -i "/^[^#SUB].*WEBFORUM_/{s/\(.*\)CONTENT/\1REFERER=H24@P(7::),CONTENT/g}" $website_dir
 ```
+
 - 这条语句的功能是：在一个文本行中，找到包含**WEBFORUM**但是不以`#`,`S`,`U`,`B`开头的文本行，r然后通过正则表达式中的backreferences方式替换`CONTENT`为`REFERER=H24@P(7::)`。这条语句中`sed`后面的`-i`选项表示在当前文本中替换，`{s/.../g}`这里加括号的意思表示这里是一条单独的sed语句，实际上整条规则去掉`{}`也是正确的，这里这样写是为了查看方便理解语义
 - `{s/\(.*\)CONTENT/\1REFERER=H24@P(7::),CONTENT`在这条正则表达式中，`\(.*\)`表示任意文本，`\1`表示替换第一个匹配的文本（即CONTENT），具体backreferences的使用请参考_Classic Shell Scripting_的_Regular Expressions_章节
 
@@ -64,11 +70,13 @@ sed -i "/^[^#SUB].*WEBFORUM_/{s/\(.*\)CONTENT/\1REFERER=H24@P(7::),CONTENT/g}" $
 sed -i "/^[^#SUB].*WEBFORUM_/{s/$/;[COMPOSE]=URL=REFERER/g}" $website_dir
 sed -i "s/^M//g" $website_dir
 ```
+
 - 这条语句的功能是：在一个文本行中，找到包含**WEBFORUM**但是不以`#`,`S`,`U`,`B`开头的文本行，在行末尾添加`;[COMPOSE]=URL=REFERER`,`$`在这里表示行尾，这里有一个值得注意的问题，当只执行第一句时，末尾结束时会多出一个`^M`符号,这个是在`windows`下的一个换行符,由于拷贝过程中经过了`windows`，所以这个符号就存在了，但是这个符号会影响这个规则文件的解析，所以必须去掉
 
 ---
 #完整代码
 - 由于涉及到一些比较敏感的东西，路径一律用`xxx`来表示
+
 ```shell
 #########################################################################
 # File Name: replace_web_site_rule.sh
@@ -119,6 +127,7 @@ else
 	esac
 fi
 ```
+
 #最后的总结
 首先`正则表达式`是一个很强大的工具，对于有规律的文本要进行处理，这个是个极好的辅助工具，sed对于一行一行的文本处理极为方便
 

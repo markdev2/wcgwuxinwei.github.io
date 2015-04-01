@@ -98,6 +98,7 @@ static noinline void __init_refok rest_init(void)
 	cpu_startup_entry(CPUHP_ONLINE);
 }
 ```
+
 - `kernel/fork`
 - `kernel_thread(kernel_init, NULL, CLONE_FS)`，这里通过这个函数创建了init进程，该函数具体代码如下：
 
@@ -164,6 +165,7 @@ static int __ref kernel_init(void *unused)
 - 在`kernel_init`中我们重点关注以下代码，在这段代码中实际上是通过`run_init_process`来执行`/sbin/init`,通过中断向量0x80（system_call）来从内核发起系统调用，如果`/sbin/init`调用失败，则会继续调用接下来的文件`/etc/init`,`/bin/init`,`/bin/sh`，
 
 ```c
+
 ...
 if (!try_to_run_init_process("/sbin/init") ||
 	    !try_to_run_init_process("/etc/init") ||
@@ -171,10 +173,12 @@ if (!try_to_run_init_process("/sbin/init") ||
 	    !try_to_run_init_process("/bin/sh"))
 		return 0;
 ...
+
 ```
 
 ---
 接下来我们回到`rest_init`的代码片段，`rest_init`执行完后，idle进程已经结束了他的使命，开始成为一个真正的`idle`进程，即真正的空闲进程，从这里开始内核的初始化真正结束了，用户态的阶段开始了
+
 ```c
 //rest_init
 ...省略
@@ -187,6 +191,7 @@ schedule_preempt_disabled();
 /* Call into cpu_idle with preempt disabled */
 cpu_startup_entry(CPUHP_ONLINE);
 ```
+
 - 这里的`cpu_startup_entry(CPUHP_ONLINE)`中的代码片段
 
 ```c

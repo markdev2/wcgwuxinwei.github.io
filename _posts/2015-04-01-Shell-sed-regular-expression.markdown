@@ -9,6 +9,7 @@ header-img: "img/home-bg.jpg"
 
 #Shell脚本的简单编写以及sed的使用
 
+---
 前一阵子为了批量修改Web审计规则，故编写了一个`Shell`脚本，顺便使用了下`sed`，顺便把`正则表达式`也重新学习一遍，感觉还是需要总结下，不然对不起自己。
 
 ---
@@ -24,29 +25,29 @@ header-img: "img/home-bg.jpg"
 ```shell
 if [ ! -e "$website_dir" -o ! -e "$weblogin_dir" ]
 then
-    echo "$website_dir 不存在"
-    echo "$weblogin_dir 不存在"
+	echo "$website_dir 不存在"
+	echo "$weblogin_dir 不存在"
 else
-...
+    ...
 fi
 ```
 
 - 这里需要重点指出一些格式问题，初学者比较容易碰到的，`if`,`then`,`else`必须**单独一行，如果想同一行请用**`;`**隔开**，不然会报错，再者，`if`后面的条件框`[]`，在两端必须留有**空格**，每次一个判断选项，和一个逻辑符号之间必须**留一个空格**，最后`fi`结尾
 - `if`条件中的各种选项可以从其他搜索引擎中找到
 
-- case条件选择
+##case条件选择
 
 ```shell
 case $1 in
-replace)
-    ...
-    exit 1;;
-restore)
-    ...
-    exit 1;;
-*)
-    echo "replace: 备份现有规则文件并替换规则文件"
-    echo "restore: 恢复规则文件";;
+    replace)
+        ...
+        exit 1;;
+    restore)
+        ...
+        exit 1;;
+    *)
+        echo "replace: 备份现有规则文件并替换规则文件"
+        echo "restore: 恢复规则文件";;
 esac
 ```
 

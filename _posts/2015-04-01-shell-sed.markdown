@@ -19,7 +19,7 @@ header-img: "img/home-bg.jpg"
 ##if条件判断
 首先看代码
 
-```shell
+```sh
 if [ ! -e "$website_dir" -o ! -e "$weblogin_dir" ]
 then
 	echo "$website_dir 不存在"

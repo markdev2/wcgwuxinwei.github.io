@@ -14,3 +14,6 @@ domain: wuxinwei.org
 
 ##20150323
 >* add a paper, `通过反汇编一个简单的C程序，分析汇编代码理解计算机是如何工作的`
+
+##20150401
+>* add neteasy online class paper, and my article

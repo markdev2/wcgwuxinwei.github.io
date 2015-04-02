@@ -13,42 +13,42 @@ header-img: "img/home-bg.jpg"
 
 ---
 #Shell
-1. 变量
+##变量
 - shell的变量**很弱**,无需定义任何类型，
 - 变量在赋值时，等号`=`两边必须不留任何`空格`，
 - 变量在使用时可以使用`$`开头使用
 
-2. if条件判断
+##if条件判断
 首先看代码
 
-    ```shell
-    if [ ! -e "$website_dir" -o ! -e "$weblogin_dir" ]
-    then
-    	echo "$website_dir 不存在"
-    	echo "$weblogin_dir 不存在"
-    else
-        ...
-    fi
-    ```
+```shell
+if [ ! -e "$website_dir" -o ! -e "$weblogin_dir" ]
+then
+    echo "$website_dir 不存在"
+    echo "$weblogin_dir 不存在"
+else
+...
+fi
+```
 
 - 这里需要重点指出一些格式问题，初学者比较容易碰到的，`if`,`then`,`else`必须**单独一行，如果想同一行请用**`;`**隔开**，不然会报错，再者，`if`后面的条件框`[]`，在两端必须留有**空格**，每次一个判断选项，和一个逻辑符号之间必须**留一个空格**，最后`fi`结尾
 - `if`条件中的各种选项可以从其他搜索引擎中找到
 
-3. case条件选择
+- case条件选择
 
-    ```shell
-    case $1 in
-        replace)
-            ...
-            exit 1;;
-        restore)
-            ...
-            exit 1;;
-        *)
-            echo "replace: 备份现有规则文件并替换规则文件"
-            echo "restore: 恢复规则文件";;
-    esac
-    ```
+```shell
+case $1 in
+replace)
+    ...
+    exit 1;;
+restore)
+    ...
+    exit 1;;
+*)
+    echo "replace: 备份现有规则文件并替换规则文件"
+    echo "restore: 恢复规则文件";;
+esac
+```
 
 - `$1`指的是选择运行时的第一个输入参数，这里的输入参数指在terminal中输出的，这里固定`$0：运行脚本本本身文件名`，`$1：为其后的第一个参数`
 

@@ -2,7 +2,7 @@
 layout:     post
 title:      "Shell脚本的简单编写以及sed的使用"
 subtitle:   "工作总结"
-date:       2015-04-01 13:00::00
+date:       2015-04-01 13:00:00
 author:     "MarkWoo"
 header-img: "img/home-bg.jpg"
 ---

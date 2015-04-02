@@ -18,13 +18,14 @@ header-img: "img/home-bg.jpg"
 
 ##if条件判断
 首先看代码
-
 ```shell
+
 if [ ! -e "$website_dir" -o ! -e "$weblogin_dir" ]
 then
-	echo "$website_dir 不存在"
-	echo "$weblogin_dir 不存在"
+    echo "$website_dir 不存在"
+    echo "$weblogin_dir 不存在"
 else
     ...
 fi
+
 ```

@@ -1,7 +1,7 @@
 ---
 layout:     post
 title:      "通过反汇编一个简单的C程序，分析汇编代码理解计算机是如何工作的"
-subtitle:   "网易云课堂`Linux内核分析`课程的第一周作业"
+subtitle:   "网易云课堂`Linux内核分析`课程"
 date:       2015-03-20 13:00::00
 author:     "MarkWoo"
 header-img: "img/home-bg.jpg"

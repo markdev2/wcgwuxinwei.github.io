@@ -1,7 +1,7 @@
 ---
 layout:     post
 title:      "通过从代码层面分析Linux内核启动来探知操作系统的启动过程"
-subtitle:   "网易云课堂`Linux内核分析`课程的第三周作业"
+subtitle:   "网易云课堂`Linux内核分析`课程"
 date:       2015-03-25 13:00::00
 author:     "MarkWoo"
 header-img: "img/home-bg.jpg"

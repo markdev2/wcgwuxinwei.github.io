@@ -298,8 +298,6 @@ start_thread(struct pt_regs *regs, unsigned long new_ip, unsigned long new_sp)
 #总结
 如你所见，执行程序的过程是一个十分复杂的过程，`exec`本质在于替换`fork()`后，根据制定的可执行文件对进程中的相应部分进行替换,最后根据连接方式的不同来设置好执行起始位置，然后开始执行进程.
 
-#实验截图
-
 
 ---
 ##参考资料

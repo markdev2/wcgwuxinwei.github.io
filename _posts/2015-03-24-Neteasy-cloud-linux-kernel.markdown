@@ -1,7 +1,7 @@
 ---
 layout:     post
 title:      "通过分析一个简化版时间片轮转多道程序内核代码来认识操作系统中的进程调度"
-subtitle:   "网易云课堂`Linux内核分析`课程的第二周作业"
+subtitle:   "网易云课堂`Linux内核分析`课程"
 date:       2015-03-24 13:00::00
 author:     "MarkWoo"
 header-img: "img/home-bg.jpg"

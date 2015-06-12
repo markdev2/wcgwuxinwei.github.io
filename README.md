@@ -20,3 +20,6 @@ domain: wuxinwei.org
 
 ##20150420
 >* modify header, about
+
+##20150612
+>* add neteasy class, about `Linux Kernel`

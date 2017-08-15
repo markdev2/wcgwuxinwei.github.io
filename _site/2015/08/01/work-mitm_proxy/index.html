@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Mark Woo Personal Blog">
+
+    <title>MITM Proxy 环境搭建 - Fly Your Mind</title>
+
+    <link rel="canonical" href="http://localhost:4000/2015/08/01/work-mitm_proxy/">
+
+    <!-- Bootstrap Core CSS -->
+    <link rel="stylesheet" href="/css/bootstrap.min.css">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/css/clean-blog.css">
+
+    <!-- Pygments Github CSS -->
+    <link rel="stylesheet" href="/css/syntax.css">
+
+    <!-- Custom Fonts -->
+    <link href="http://maxcdn.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.min.css" rel="stylesheet" type="text/css">
+    <link href='http://fonts.googleapis.com/css?family=Lora:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
+    <link href='http://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800' rel='stylesheet' type='text/css'>
+
+    <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+    <!--[if lt IE 9]>
+        <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+        <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+    <![endif]-->
+
+    <!-- google Prettify CSS -->
+	<link rel="stylesheet" href="/css/prettify.css">
+
+</head>
+
+
+<body>
+
+    <!-- Navigation -->
+<nav class="navbar navbar-default navbar-custom navbar-fixed-top">
+    <div class="container-fluid">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header page-scroll">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="/">Fly Your Mind</a>
+        </div>
+
+        <!-- Collect the nav links, forms, and other content for toggling -->
+        <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+            <ul class="nav navbar-nav navbar-right">
+                <li>
+                    <a href="/">Home</a>
+                </li>
+                
+                <li>
+                    <a href="/about/">Resume</a>
+                </li>
+                
+                <li>
+                    <a href="/contact/">Contact</a>
+                </li>
+                
+            </ul>
+        </div>
+        <!-- /.navbar-collapse -->
+    </div>
+    <!-- /.container -->
+</nav>
+
+
+    <!-- Post Header -->
+<header class="intro-header" style="background-image: url('/img/home-bg.jpg')">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+                <div class="post-heading">
+                    <h1>MITM Proxy 环境搭建</h1>
+                    
+                    <h2 class="subheading">安全</h2>
+                    
+                    <span class="meta">Posted by MarkWoo on August 1, 2015</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- Post Content -->
+<article>
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+
+				<h1 id="mitm_proxy环境搭建">MITM_Proxy环境搭建</h1>
+
+<hr />
+
+<h1 id="环境要求">环境要求</h1>
+<p>系统环境要求：</p>
+<blockquote>
+  <ul>
+    <li>Ubuntu 14.04 x64，CentOS 7 x64以上版本系统(建议使用xubuntu 14.04 x64，稳定硬件要求低)</li>
+    <li>Python 2.7以上运行环境（MITM用Python写的）</li>
+    <li>Pip 7.1版本以上,这个用于安装<strong>MITM Proxy</strong></li>
+  </ul>
+</blockquote>
+
+<p>官方安装指南：<strong>http://mitmproxy.org/doc/install.html</strong></p>
+
+<hr />
+<h1 id="下面以xubunut-x64为例进行环境搭建">下面以xubunut x64为例进行环境搭建</h1>
+<ul>
+  <li>首先安装一个纯净版的<strong>xubuntu 14.04 x64</strong>系统,手动安装分区方法见下面链接: http://blog.chinaunix.net/uid-7547035-id-60111.html</li>
+  <li>设置好升级<strong>xubuntu</strong>升级服务器选择，建议选择aliyun节点或者香港中文大学节点，速度快，稳定</li>
+  <li>设置完毕后会提示授权以及是否立即进行更新，选择是
+    <h2 id="然后打开终端模拟器terminial准备开始更新系统列表和开始配置网卡运行命令如下">然后打开终端模拟器(terminial)，准备开始更新系统列表和开始配置网卡,运行命令如下:</h2>
+  </li>
+</ul>
+
+<div class="language-bash highlighter-rouge"><pre class="highlight"><code>sudo apt-get update <span class="c">#更新远程软件仓库列表</span>
+sudo apt-get install vim git openssh-server openssh-client <span class="c">#安装工具vim,git,openssh-server,openssh-client</span>
+git clone https://github.com/wuxinwei/MyConfig.git <span class="c">#从github上clone下来我的配置信息，里面有vimrc,tmux,zsh的配置文件，我已经全部配好了，可以覆盖到/home/用户名/就可以</span>
+cp .../MyConfig/_vimrc ~/.vimrc <span class="c">#使用vim配置文件</span>
+sudo /etc/init.d/ssh start <span class="c">#启动ssh服务，ssh-server配置文件位于/ etc/ssh/sshd_config，在这里可以定义SSH的服务端口，默认端口是22，你可以自己定义成其他端口号，如222</span>
+sudo apt-get install bridge-utils <span class="c">#安装桥工具bridge-utils</span>
+brctl addbr br0 <span class="c">#添加一个网桥</span>
+brctl addif br0 eth0 <span class="c">#将eth0加到网桥中去</span>
+brctl addif br0 eth1 <span class="c">#将eth1加到网桥中去</span>
+</code></pre>
+</div>
+
+<hr />
+<h2 id="开启ip转发功能以及其他配置sudo-vim-etcsysctlconf">开启IP转发功能以及其他配置<code class="highlighter-rouge">sudo vim /etc/sysctl.conf</code>:</h2>
+
+<div class="language-bash highlighter-rouge"><pre class="highlight"><code><span class="c"># 将全部内容改为如下:</span>
+<span class="c">#</span>
+<span class="c"># /etc/sysctl.conf - Configuration file for setting system variables</span>
+<span class="c"># See /etc/sysctl.d/ for additional system variables.</span>
+<span class="c"># See sysctl.conf (5) for information.</span>
+<span class="c">#</span>
+
+<span class="c">#kernel.domainname = example.com</span>
+
+<span class="c"># Uncomment the following to stop low-level messages on console</span>
+<span class="c">#kernel.printk = 3 4 1 3</span>
+
+<span class="c">##############################################################3</span>
+<span class="c"># Functions previously found in netbase</span>
+<span class="c">#</span>
+
+<span class="c"># Uncomment the next two lines to enable Spoof protection (reverse-path filter)</span>
+<span class="c"># Turn on Source Address Verification in all interfaces to</span>
+<span class="c"># prevent some spoofing attacks</span>
+<span class="c">#net.ipv4.conf.default.rp_filter=1</span>
+<span class="c">#net.ipv4.conf.all.rp_filter=1</span>
+
+<span class="c"># Uncomment the next line to enable TCP/IP SYN cookies</span>
+<span class="c"># See http://lwn.net/Articles/277146/</span>
+<span class="c"># Note: This may impact IPv6 TCP sessions too</span>
+<span class="c">#net.ipv4.tcp_syncookies=1</span>
+
+<span class="c"># Uncomment the next line to enable packet forwarding for IPv4</span>
+net.ipv4.ip_forward<span class="o">=</span>1
+
+<span class="c"># Uncomment the next line to enable packet forwarding for IPv6</span>
+<span class="c">#  Enabling this option disables Stateless Address Autoconfiguration</span>
+<span class="c">#  based on Router Advertisements for this host</span>
+net.ipv6.conf.all.forwarding<span class="o">=</span>1
+
+
+<span class="c">###################################################################</span>
+<span class="c"># Additional settings - these settings can improve the network</span>
+<span class="c"># security of the host and prevent against some network attacks</span>
+<span class="c"># including spoofing attacks and man in the middle attacks through</span>
+<span class="c"># redirection. Some network environments, however, require that these</span>
+<span class="c"># settings are disabled so review and enable them as needed.</span>
+<span class="c">#</span>
+<span class="c"># Do not accept ICMP redirects (prevent MITM attacks)</span>
+net.ipv4.conf.all.accept_redirects <span class="o">=</span> 0
+net.ipv6.conf.all.accept_redirects <span class="o">=</span> 0
+<span class="c"># _or_</span>
+<span class="c"># Accept ICMP redirects only for gateways listed in our default</span>
+<span class="c"># gateway list (enabled by default)</span>
+<span class="c"># net.ipv4.conf.all.secure_redirects = 1</span>
+net.ipv4.conf.all.secure_redirects <span class="o">=</span> 0
+<span class="c">#</span>
+<span class="c"># Do not send ICMP redirects (we are not a router)</span>
+<span class="c">#net.ipv4.conf.all.send_redirects = 0</span>
+net.ipv4.conf.all.send_redirects <span class="o">=</span> 0
+<span class="c">#</span>
+<span class="c"># Do not accept IP source route packets (we are not a router)</span>
+<span class="c">#net.ipv4.conf.all.accept_source_route = 0</span>
+<span class="c">#net.ipv6.conf.all.accept_source_route = 0</span>
+net.ipv4.conf.all.accept_source_route <span class="o">=</span> 0
+net.ipv6.conf.all.accept_source_route <span class="o">=</span> 0
+<span class="c">#</span>
+<span class="c"># Log Martian Packets</span>
+<span class="c">#net.ipv4.conf.all.log_martians = 1</span>
+<span class="c">#</span>
+</code></pre>
+</div>
+
+<hr />
+<h2 id="配置网桥sudo-vim-etcnetworkinterfaces以管理员权限打开网络配置文件">配置网桥<code class="highlighter-rouge">sudo vim /etc/network/interfaces//以管理员权限打开网络配置文件</code>:</h2>
+
+<div class="language-bash highlighter-rouge"><pre class="highlight"><code><span class="c"># 把全部文件内容改为如下：</span>
+<span class="c"># interfaces(5) file used by ifup(8) and ifdown(8)</span>
+auto lo
+iface lo inet loopback
+
+auto eth0 <span class="c">#网卡eth0</span>
+iface eth0 inet manual <span class="c">#设置eth0网卡为手动配置，这样不会自动获取ip配置等</span>
+
+auto eth1 <span class="c">#网卡eth1</span>
+iface eth1 inet manual <span class="c">#设置eth0网卡为手动配置，这样不会自动获取ip配置等</span>
+
+auto br0 <span class="c">#网桥0</span>
+iface br0 inet static <span class="c">#设置网桥br0为静态，这样不会变化ip</span>
+address 192.168.4.144 <span class="c">#这里设置网桥IP</span>
+netmask 255.255.255.0 <span class="c">#设置网桥子网掩码</span>
+broadcast 192.168.4.255 <span class="c">#设置网桥广播地址</span>
+gateway 192.168.4.2 <span class="c">#这是网桥网关</span>
+dns-nameservers 202.96.128.86 <span class="c">#设置网桥DNS</span>
+bridge_ports eth0 eth1 //将eth0 和eth1网卡添加如网桥中去
+bridge_stp off
+brideg_hello 2
+bridge_fd 9
+bridge_maxwait 0
+</code></pre>
+</div>
+<hr />
+<h2 id="设置防火墙注意这里的iptables设置在重启系统后会失效所以如果重启过机器这里需要重新设置">设置防火墙(注意，这里的<code class="highlighter-rouge">iptables</code>设置在重启系统后会失效,所以如果重启过机器这里需要重新设置)：</h2>
+
+<div class="language-bash highlighter-rouge"><pre class="highlight"><code><span class="nb">echo </span>0 | sudo tee /proc/sys/net/ipv4/conf/<span class="k">*</span>/send_redirects
+<span class="k">*</span>/
+service iptables start <span class="c">#开启iptables过滤服务</span>
+service iptables save
+iptables -t nat -A PREROUTING -i br0 -p tcp --dport 80 -j REDIRECT --to-port 8080 <span class="c">#将80端口转发给8080</span>
+iptables -t nat -A PREROUTING -i br0 -p tcp --dport 443 -j REDIRECT --to-port 8080 <span class="c">#将443端口数据转发给8080</span>
+service iptables save
+</code></pre>
+</div>
+
+<p>官方透明代理设置教程: 
+http://mitmproxy.org/doc/transparent/linux.html(物理机设置)
+http://mitmproxy.org/doc/tutorials/transparent-dhcp.html(虚拟机设置)
+经过以上配置，实现了建立网桥，打开路由转发功能（用于MITM的透明代理）</p>
+
+<hr />
+<h2 id="安装mitm-proxy运行环境以及mitm-proxy">安装<strong>MITM Proxy</strong>运行环境以及<strong>MITM Proxy</strong></h2>
+
+<div class="language-bash highlighter-rouge"><pre class="highlight"><code>sudo apt-get install python-pip python-dev libffi-dev libssl-dev libxml2-dev libxslt1-dev <span class="c">#安装必要的运行环境</span>
+sudo pip install mitmproxy <span class="c">#安装mitmproxy,安装成功后会在生成两个工具/usr/local/bin/mitmproxy与/usr/local/bin/mitmdump</span>
+</code></pre>
+</div>
+
+<hr />
+<h2 id="到这里为mitmproxy的环境安装完毕接下来进行目标机方面的配置">到这里为mitmproxy的环境安装完毕，接下来进行目标机方面的配置</h2>
+
+<blockquote>
+  <ul>
+    <li>CA证书的安装
+　　要捕获https证书，就得解决证书认证的问题，因此需要在通信发生的客户端安装证书，并且设置为受信任的根证书颁布机构。下面介绍6种客户端的安装方法。
+　　当我们初次运行mitmproxy或mitmdump时，
+　　会在当前目录下生成 ~/.mitmproxy文件夹，其中该文件下包含4个文件，这就是我们要的证书了。
+　　mitmproxy-ca.pem 私钥
+　　mitmproxy-ca-cert.pem 非windows平台使用
+　　mitmproxy-ca-cert.p12 windows上使用
+　　mitmproxy-ca-cert.cer 与mitmproxy-ca-cert.pem相同，android上使用
+　　1. Firefox上安装
+　　preferences-Advanced-Encryption-View Certificates-Import (mitmproxy-ca-cert.pem)-trust this CA to identify web sites
+　　2. chrome上安装
+　　设置-高级设置-HTTPS/SSL-管理证书-受信任的根证书颁发机构-导入mitmproxy-ca-cert.pem
+　　2. osx上安装
+　　双击mitmproxy-ca-cert.pem - always trust
+　　3.windows7上安装
+　　双击mitmproxy-ca-cert.p12-next-next-将所有的证书放入下列存储-受信任的根证书发布机构
+　　4.iOS上安装
+　　将mitmproxy-ca-cert.pem发送到iphone邮箱里，通过浏览器访问/邮件附件
+　　6.Android上安装
+　　将mitmproxy-ca-cert.cer 放到sdcard根目录下
+　　选择设置-安全和隐私-从存储设备安装证书</li>
+  </ul>
+</blockquote>
+
+<hr />
+<p>一些额外的资料：</p>
+<blockquote>
+  <ul>
+    <li>官方教程: http://mitmproxy.org/doc/index.html</li>
+    <li><a href="http://www.cnblogs.com/ShepherdIsland/p/4239052.html">win7、linux安装使用pip、mitmproxy</a></li>
+    <li><a href="http://blog.jobbole.com/30251/">推荐给开发人员的6个实用命令行工具</a></li>
+    <li><a href="http://hello1010.com/mitmproxy-android/">使用mitmproxy进行Android的http抓包</a></li>
+    <li><a href="http://liujin.me/blog/2015/05/27/mitmproxy-for-beginner/">mitmproxy 入门案例 -『抱抱』24小时销毁的真相(iOS端)</a></li>
+    <li><a href="https://greenrobot.me/devpost/how-to-debug-android-http-get-started/">mitmproxy实践教程之调试 Android 上 HTTP流量</a></li>
+  </ul>
+</blockquote>
+
+
+
+                <hr>
+
+                <ul class="pager">
+                    
+                    <li class="previous">
+                        <a href="/2015/05/02/Neteasy-cloud-linux-kernel/" data-toggle="tooltip" data-placement="top" title="关于 Linux 内核学习的一点点总结">&larr; Previous Post</a>
+                    </li>
+                    
+                    
+                    <li class="next">
+                        <a href="/2016/02/03/work-recast_navigation/" data-toggle="tooltip" data-placement="top" title="CritterAI与Recast Navigation寻路">Next Post &rarr;</a>
+                    </li>
+                    
+                </ul>
+
+            </div>
+        </div>
+    </div>
+</article>
+
+<hr>
+
+
+    <!-- Footer -->
+<footer>
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+                <ul class="list-inline text-center">
+                    <li>
+                        <a href="/feed.xml">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-rss fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="https://twitter.com/wcgwuxinwei">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-twitter fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                    
+                    <li>
+                        <a href="https://www.facebook.com/mark.woo.1990">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-facebook fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                    
+                    <li>
+                        <a href="https://github.com/wuxinwei">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-github fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                </ul>
+                <p class="copyright text-muted">Copyright &copy; Fly Your Mind 2017</p>
+            </div>
+        </div>
+    </div>
+</footer>
+
+<!-- jQuery -->
+<script src="/js/jquery.min.js "></script>
+
+<!-- Bootstrap Core JavaScript -->
+<script src="/js/bootstrap.min.js "></script>
+
+<!-- Custom Theme JavaScript -->
+<script src="/js/prettify.js"></script>
+
+
+</body>
+
+</html>

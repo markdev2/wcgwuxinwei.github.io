@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Mark Woo Personal Blog">
+
+    <title>通过分析system_call中断处理过程来深入理解系统调用 - Fly Your Mind</title>
+
+    <link rel="canonical" href="http://localhost:4000/2015/04/06/Neteasy-cloud-linux-kernel/">
+
+    <!-- Bootstrap Core CSS -->
+    <link rel="stylesheet" href="/css/bootstrap.min.css">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/css/clean-blog.css">
+
+    <!-- Pygments Github CSS -->
+    <link rel="stylesheet" href="/css/syntax.css">
+
+    <!-- Custom Fonts -->
+    <link href="http://maxcdn.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.min.css" rel="stylesheet" type="text/css">
+    <link href='http://fonts.googleapis.com/css?family=Lora:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
+    <link href='http://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800' rel='stylesheet' type='text/css'>
+
+    <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+    <!--[if lt IE 9]>
+        <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+        <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+    <![endif]-->
+
+    <!-- google Prettify CSS -->
+	<link rel="stylesheet" href="/css/prettify.css">
+
+</head>
+
+
+<body>
+
+    <!-- Navigation -->
+<nav class="navbar navbar-default navbar-custom navbar-fixed-top">
+    <div class="container-fluid">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header page-scroll">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="/">Fly Your Mind</a>
+        </div>
+
+        <!-- Collect the nav links, forms, and other content for toggling -->
+        <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+            <ul class="nav navbar-nav navbar-right">
+                <li>
+                    <a href="/">Home</a>
+                </li>
+                
+                <li>
+                    <a href="/about/">Resume</a>
+                </li>
+                
+                <li>
+                    <a href="/contact/">Contact</a>
+                </li>
+                
+            </ul>
+        </div>
+        <!-- /.navbar-collapse -->
+    </div>
+    <!-- /.container -->
+</nav>
+
+
+    <!-- Post Header -->
+<header class="intro-header" style="background-image: url('/img/home-bg.jpg')">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+                <div class="post-heading">
+                    <h1>通过分析system_call中断处理过程来深入理解系统调用</h1>
+                    
+                    <h2 class="subheading">网易云课堂Linux内核分析课程</h2>
+                    
+                    <span class="meta">Posted by MarkWoo on April 6, 2015</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- Post Content -->
+<article>
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+
+				<h1 id="通过分析system_call中断处理过程来深入理解系统调用">通过分析system_call中断处理过程来深入理解系统调用</h1>
+
+<h2 id="前言说明">前言说明</h2>
+<p>本篇为网易云课堂Linux内核分析课程的第五周作业，我将通过上一次作业中分析的2个系统调用（<code class="highlighter-rouge">getpid</code>, <code class="highlighter-rouge">open</code>）作为分析实例来更加深入分析系统调用的过程，本篇中我将深入到system_call（汇编级别代码）中来分析其执行过程.</p>
+
+<hr />
+<h2 id="关键词system_call-系统调用">关键词：<code class="highlighter-rouge">system_call</code>, <code class="highlighter-rouge">系统调用</code></h2>
+
+<hr />
+<p><em>运行环境：</em></p>
+
+<ul>
+  <li>Ubuntu 14.04 LTS x64</li>
+  <li>gcc 4.9.2</li>
+  <li>gdb 7.8</li>
+  <li>vim 7.4 with vundle</li>
+</ul>
+
+<hr />
+<h2 id="分析过程">分析过程</h2>
+<p>从上一次课后，我们对于系统调用在执行过程中的一些基本情况有了一个比较抽象的认识，一个系统调用的基本过程是用户态程序通过<code class="highlighter-rouge">int 0x80</code>中断向量指令实现从用户态进入内核态，系统调用过程中，<code class="highlighter-rouge">eax</code>寄存器负责传递<strong>系统调用号</strong>,<code class="highlighter-rouge">ebx</code>,<code class="highlighter-rouge">ecx</code>等其他寄存器负责传递<strong>其他参数</strong>，但是对于执行完了<code class="highlighter-rouge">int 0x80</code>之后，在内核态时：</p>
+
+<ul>
+  <li>操作系统到底干了哪些具体的工作？</li>
+  <li>系统调用在内核态这一阶段的过程是什么？</li>
+</ul>
+
+<h3 id="基本概念的总结">基本概念的总结</h3>
+<ol>
+  <li>中断
+ 中断分为2种，
+    <ul>
+      <li>可屏蔽中断： I/O设备发出的所有的中断请求（IRQ）都产生可屏蔽中断。可屏蔽中断产生两种状态：屏蔽的（masked）或非屏蔽的（unmasked）；当中断被屏蔽，则CPU控制单元就忽略它。</li>
+      <li>非可屏蔽中断：总是由CPU辨认。只有几个危急事件引起非屏蔽中断。</li>
+    </ul>
+  </li>
+  <li>进程上下文
+ 一般来说，CPU在任何时刻都处于以下三种情况之一：
+    <blockquote>
+      <ul>
+        <li>运行于用户空间，执行用户进程；</li>
+        <li>运行于内核空间，处于进程上下文；</li>
+        <li>运行于内核空间，处于中断上下文。</li>
+      </ul>
+    </blockquote>
+
+    <p>应用程序通过系统调用陷入内核，此时处于进程上下文。现代几乎所有的CPU体系结构都支持中断。当外部设备产生中断，向CPU发送一个异步信号，CPU调用相应的中断处理程序来处理该中断，此时CPU处于中断上下文。
+ 在进程上下文中，可以通过current关联相应的任务。进程以进程上下文的形式运行在内核空间，可以发生睡眠，所以在进程上下文中，可以使作信号量(semaphore)。实际上，内核经常在进程上下文中使用信号量来完成任务之间的同步，当然也可以使用锁。
+ 中断上下文不属于任何进程，它与current没有任何关系(尽管此时current指向被中断的进程)。由于没有进程背景，在中断上下文中不能发生睡眠，否则又如何对它进行调度。所以在中断上下文中只能使用锁进行同步，正是因为这个原因，中断上下文也叫做原子上下文(atomic context)(关于同步以后再详细讨论)。在中断处理程序中，通常会禁止同一中断，甚至会禁止整个本地中断，所以中断处理程序应该尽可能迅速，所以又把中断处理分成上部和下部。</p>
+
+    <p>　　相对于进程而言，就是进程执行时的环境。具体来说就是各个变量和数据，包括所有的寄存器变量、进程打开的文件、内存信息等。一个进程的上下文可以分为三个部分:用户级上下文、寄存器上下文以及系统级上下文。</p>
+
+    <blockquote>
+      <ul>
+        <li>用户级上下文: 正文、数据、用户堆栈以及共享存储区；</li>
+        <li>寄存器上下文: 通用寄存器、程序寄存器(IP)、处理器状态寄存器(EFLAGS)、栈指针(ESP)；</li>
+        <li>系统级上下文: 进程控制块task_struct、内存管理信息(mm_struct、vm_area_struct、pgd、pte)、内核栈。</li>
+      </ul>
+    </blockquote>
+  </li>
+  <li>中断上下文与进程上下文
+硬件通过触发信号，导致内核调用中断处理程序，进入内核空间。这个过程中，硬件的 一些变量和参数也要传递给内核，内核通过这些参数进行中断处理。所谓的“ 中断上下文”，其实也可以看作就是硬件传递过来的这些参数和内核需要保存的一些其他环境（主要是当前被打断执行的进程环境）。<strong>中断时，内核不代表任何进程运行，它一般只访问系统空间，而不会访问进程空间，内核在中断上下文中执行时一般不会阻塞</strong>.</li>
+</ol>
+
+<hr />
+<h2 id="system_call">System_Call</h2>
+
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="cp"># system call handler stub
+</span><span class="n">ENTRY</span><span class="p">(</span><span class="n">system_call</span><span class="p">)</span>
+	<span class="n">RING0_INT_FRAME</span>			<span class="err">#</span> <span class="n">can</span><span class="err">'</span><span class="n">t</span> <span class="n">unwind</span> <span class="n">into</span> <span class="n">user</span> <span class="n">space</span> <span class="n">anyway</span>
+	<span class="n">ASM_CLAC</span>
+	<span class="n">pushl_cfi</span> <span class="o">%</span><span class="n">eax</span>			<span class="err">#</span> <span class="n">save</span> <span class="n">orig_eax</span>
+	<span class="n">SAVE_ALL</span>				<span class="c1">// 保存系统寄存器信息
+</span>	<span class="n">GET_THREAD_INFO</span><span class="p">(</span><span class="o">%</span><span class="n">ebp</span><span class="p">)</span>   <span class="c1">// 获取thread_info结构的信息
+</span>					<span class="cp"># system call tracing in operation / emulation
+</span>	<span class="n">testl</span> <span class="err">$</span><span class="n">_TIF_WORK_SYSCALL_ENTRY</span><span class="p">,</span><span class="n">TI_flags</span><span class="p">(</span><span class="o">%</span><span class="n">ebp</span><span class="p">)</span> <span class="err">#</span> <span class="err">测试是否有系统跟踪</span>
+	<span class="n">jnz</span> <span class="n">syscall_trace_entry</span>   <span class="c1">// 如果有系统跟踪，先执行，然后再回来
+</span>	<span class="n">cmpl</span> <span class="err">$</span><span class="p">(</span><span class="n">NR_syscalls</span><span class="p">),</span> <span class="o">%</span><span class="n">eax</span> <span class="c1">// 比较eax中的系统调用号和最大syscall，超过则无效
+</span>	<span class="n">jae</span> <span class="n">syscall_badsys</span>  <span class="c1">// 无效的系统调用 直接返回
+</span><span class="nl">syscall_call:</span>
+	<span class="n">call</span> <span class="o">*</span><span class="n">sys_call_table</span><span class="p">(,</span><span class="o">%</span><span class="n">eax</span><span class="p">,</span><span class="mi">4</span><span class="p">)</span> <span class="c1">// 调用实际的系统调用程序
+</span><span class="nl">syscall_after_call:</span>
+	<span class="n">movl</span> <span class="o">%</span><span class="n">eax</span><span class="p">,</span><span class="n">PT_EAX</span><span class="p">(</span><span class="o">%</span><span class="n">esp</span><span class="p">)</span>		<span class="c1">// 将系统调用的返回值eax存储在栈中
+</span><span class="nl">syscall_exit:</span>
+	<span class="n">LOCKDEP_SYS_EXIT</span>
+	<span class="n">DISABLE_INTERRUPTS</span><span class="p">(</span><span class="n">CLBR_ANY</span><span class="p">)</span>	<span class="err">#</span> <span class="n">make</span> <span class="n">sure</span> <span class="n">we</span> <span class="n">don</span><span class="err">'</span><span class="n">t</span> <span class="n">miss</span> <span class="n">an</span> <span class="n">interrupt</span>
+					<span class="cp"># setting need_resched or sigpending
+</span>					<span class="cp"># between sampling and the iret
+</span>	<span class="n">TRACE_IRQS_OFF</span>
+	<span class="n">movl</span> <span class="n">TI_flags</span><span class="p">(</span><span class="o">%</span><span class="n">ebp</span><span class="p">),</span> <span class="o">%</span><span class="n">ecx</span>
+	<span class="n">testl</span> <span class="err">$</span><span class="n">_TIF_ALLWORK_MASK</span><span class="p">,</span> <span class="o">%</span><span class="n">ecx</span>	<span class="c1">//检测是否所有工作已完成
+</span>	<span class="n">jne</span> <span class="n">syscall_exit_work</span>  			<span class="c1">//工作已经完成，则去进行系统调用推出工作
+</span>
+<span class="n">restore_all</span><span class="o">:</span>
+	<span class="n">TRACE_IRQS_IRET</span>			<span class="c1">// iret 从系统调用返回
+</span></code></pre>
+</div>
+
+<p>System_Call的基本处理流程为：</p>
+<ul>
+  <li>首先保存中断上下文（SAVE_ALL，也就是CPU状态，包括各个寄存器）,判断请求的系统调用是否有效</li>
+  <li>然后<code class="highlighter-rouge">call *sys_call_table(,%eax,4)</code>通过系统查询系统调用查到相应的系统调用程序地址，执行相应的系统调用</li>
+  <li>系统调用完后，返回系统调用的返回值</li>
+  <li>关闭中断响应，检测系统调用的所有工作是否已经完成，如果完成则进行<code class="highlighter-rouge">syscall_exit_work</code>(完成系统调用退出工作）</li>
+  <li>最后restore_all(恢复中断请求响应),返回用户态</li>
+</ul>
+
+<p>接下来对于中间比较关键的片段代码进行重点分析</p>
+
+<h2 id="system_call中的关键部分">System_Call中的关键部分</h2>
+
+<h3 id="syscall_exit_work">syscall_exit_work</h3>
+
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="nl">syscall_exit_work:</span>
+	<span class="n">testl</span> <span class="err">$</span><span class="n">_TIF_WORK_SYSCALL_EXIT</span><span class="p">,</span> <span class="o">%</span><span class="n">ecx</span> <span class="c1">//测试syscall的工作完成
+</span>	<span class="n">jz</span> <span class="n">work_pending</span>
+	<span class="n">TRACE_IRQS_ON</span>  <span class="c1">//切换中断请求响应追踪可用
+</span>	<span class="n">ENABLE_INTERRUPTS</span><span class="p">(</span><span class="n">CLBR_ANY</span><span class="p">)</span>	<span class="err">#</span> <span class="n">could</span> <span class="n">let</span> <span class="n">syscall_trace_leave</span><span class="p">()</span> <span class="n">call</span>
+					<span class="c1">//schedule() instead
+</span>	<span class="n">movl</span> <span class="o">%</span><span class="n">esp</span><span class="p">,</span> <span class="o">%</span><span class="n">eax</span>
+	<span class="n">call</span> <span class="n">syscall_trace_leave</span> <span class="c1">//停止追踪系统调用
+</span>	<span class="n">jmp</span> <span class="n">resume_userspace</span> <span class="c1">//返回用户空间,只需要检查need_resched
+</span><span class="n">END</span><span class="p">(</span><span class="n">syscall_exit_work</span><span class="p">)</span>
+</code></pre>
+</div>
+
+<p>该过程为系统调用完成后如何退出调用的过程,其中比较重要的是<code class="highlighter-rouge">work_pending</code>,详见如下：</p>
+
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="nl">work_pending:</span>
+	<span class="n">testb</span> <span class="err">$</span><span class="n">_TIF_NEED_RESCHED</span><span class="p">,</span> <span class="o">%</span><span class="n">cl</span>  <span class="c1">// 判断是否需要调度
+</span>	<span class="n">jz</span> <span class="n">work_notifysig</span>   <span class="c1">// 不需要则跳转到work_notifysig
+</span><span class="nl">work_resched:</span>
+	<span class="n">call</span> <span class="n">schedule</span>   <span class="c1">// 调度进程
+</span>	<span class="n">LOCKDEP_SYS_EXIT</span>
+	<span class="n">DISABLE_INTERRUPTS</span><span class="p">(</span><span class="n">CLBR_ANY</span><span class="p">)</span>	<span class="err">#</span> <span class="n">make</span> <span class="n">sure</span> <span class="n">we</span> <span class="n">don</span><span class="err">'</span><span class="n">t</span> <span class="n">miss</span> <span class="n">an</span> <span class="n">interrupt</span>
+					<span class="cp"># setting need_resched or sigpending
+</span>					<span class="cp"># between sampling and the iret
+</span>	<span class="n">TRACE_IRQS_OFF</span>
+	<span class="n">movl</span> <span class="n">TI_flags</span><span class="p">(</span><span class="o">%</span><span class="n">ebp</span><span class="p">),</span> <span class="o">%</span><span class="n">ecx</span>
+	<span class="n">andl</span> <span class="err">$</span><span class="n">_TIF_WORK_MASK</span><span class="p">,</span> <span class="o">%</span><span class="n">ecx</span>	<span class="c1">// 是否所有工作都已经做完
+</span>	<span class="n">jz</span> <span class="n">restore_all</span>  			<span class="c1">// 是则退出
+</span>	<span class="n">testb</span> <span class="err">$</span><span class="n">_TIF_NEED_RESCHED</span><span class="p">,</span> <span class="o">%</span><span class="n">cl</span> <span class="c1">// 测试是否需要调度
+</span>	<span class="n">jnz</span> <span class="n">work_resched</span>  			<span class="c1">// 重新执行调度代码
+</span>
+<span class="n">work_notifysig</span><span class="o">:</span>				<span class="c1">// 处理未决信号集
+</span><span class="cp">#ifdef CONFIG_VM86
+</span>	<span class="n">testl</span> <span class="err">$</span><span class="n">X86_EFLAGS_VM</span><span class="p">,</span> <span class="n">PT_EFLAGS</span><span class="p">(</span><span class="o">%</span><span class="n">esp</span><span class="p">)</span> <span class="c1">// 判断是否在虚拟8086模式下
+</span>	<span class="n">movl</span> <span class="o">%</span><span class="n">esp</span><span class="p">,</span> <span class="o">%</span><span class="n">eax</span>
+	<span class="n">jne</span> <span class="n">work_notifysig_v86</span>		<span class="c1">// 返回到内核空间
+</span><span class="mi">1</span><span class="o">:</span>
+<span class="cp">#else
+</span>	<span class="n">movl</span> <span class="o">%</span><span class="n">esp</span><span class="p">,</span> <span class="o">%</span><span class="n">eax</span>
+<span class="cp">#endif
+</span>	<span class="n">TRACE_IRQS_ON</span>  <span class="err">#启动跟踪中断请求响应</span>
+	<span class="n">ENABLE_INTERRUPTS</span><span class="p">(</span><span class="n">CLBR_NONE</span><span class="p">)</span>
+	<span class="n">movb</span> <span class="n">PT_CS</span><span class="p">(</span><span class="o">%</span><span class="n">esp</span><span class="p">),</span> <span class="o">%</span><span class="n">bl</span>
+	<span class="n">andb</span> <span class="err">$</span><span class="n">SEGMENT_RPL_MASK</span><span class="p">,</span> <span class="o">%</span><span class="n">bl</span>
+	<span class="n">cmpb</span> <span class="err">$</span><span class="n">USER_RPL</span><span class="p">,</span> <span class="o">%</span><span class="n">bl</span>
+	<span class="n">jb</span> <span class="n">resume_kernel</span>        <span class="err">#</span> <span class="err">恢复内核空间</span>
+	<span class="n">xorl</span> <span class="o">%</span><span class="n">edx</span><span class="p">,</span> <span class="o">%</span><span class="n">edx</span>
+	<span class="n">call</span> <span class="n">do_notify_resume</span>  <span class="err">#</span> <span class="err">将信号投递到进程</span>
+	<span class="n">jmp</span> <span class="n">resume_userspace</span>  <span class="err">#</span> <span class="err">恢复用户空间</span>
+
+<span class="cp">#ifdef CONFIG_VM86
+</span>	<span class="n">ALIGN</span>
+<span class="n">work_notifysig_v86</span><span class="o">:</span>
+	<span class="n">pushl_cfi</span> <span class="o">%</span><span class="n">ecx</span>			<span class="err">#</span> <span class="n">save</span> <span class="n">ti_flags</span> <span class="k">for</span> <span class="n">do_notify_resume</span>
+	<span class="n">call</span> <span class="n">save_v86_state</span>		<span class="err">#</span> <span class="err">保存</span><span class="n">VM86</span><span class="err">模式下的</span><span class="n">CPU</span><span class="err">信息</span>
+	<span class="n">popl_cfi</span> <span class="o">%</span><span class="n">ecx</span>
+	<span class="n">movl</span> <span class="o">%</span><span class="n">eax</span><span class="p">,</span> <span class="o">%</span><span class="n">esp</span>
+	<span class="n">jmp</span> <span class="mi">1</span><span class="n">b</span>
+<span class="cp">#endif
+</span><span class="n">END</span><span class="p">(</span><span class="n">work_pending</span><span class="p">)</span>
+</code></pre>
+</div>
+<p>首先是<code class="highlighter-rouge">work_pending</code>这段汇编逻辑：</p>
+<ul>
+  <li>检查是否需要进行调度</li>
+  <li>如果需要，进行进程调度，然后再次进行判断</li>
+  <li>如果无需调度，那就去执行<code class="highlighter-rouge">work_notifying</code>,处理信号</li>
+</ul>
+
+<p>然后是<code class="highlighter-rouge">work_notifysig</code>的这段汇编逻辑:</p>
+<ul>
+  <li>先检查是否是虚拟8086模式,即8086保护模式</li>
+  <li>如果是，那么需要先保存虚模式下的状态信息</li>
+  <li>然后跳转到之前的代码继续执行</li>
+  <li>将信号投递到进程</li>
+  <li>恢复用户空间</li>
+</ul>
+
+<p>最后返回系统调用</p>
+
+<hr />
+<h2 id="我的总结">我的总结</h2>
+<p>系统调用中断本质上是一个保存当前工作状态，然后处理，最后返回并且恢复线程的过程.</p>
+
+<hr />
+<h2 id="参考资料">参考资料</h2>
+<ul>
+  <li>Understanding The Linux Kernel, the 3rd edtion</li>
+  <li>Linux内核设计与实现，第三版，Robert Love, 机械工业出版社</li>
+</ul>
+
+
+                <hr>
+
+                <ul class="pager">
+                    
+                    <li class="previous">
+                        <a href="/2015/04/01/work-shell-sed/" data-toggle="tooltip" data-placement="top" title="Shell脚本的简单编写以及sed的使用">&larr; Previous Post</a>
+                    </li>
+                    
+                    
+                    <li class="next">
+                        <a href="/2015/04/12/Neteasy-cloud-linux-kernel/" data-toggle="tooltip" data-placement="top" title="分析Linux内核创建一个新进程的过程">Next Post &rarr;</a>
+                    </li>
+                    
+                </ul>
+
+            </div>
+        </div>
+    </div>
+</article>
+
+<hr>
+
+
+    <!-- Footer -->
+<footer>
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+                <ul class="list-inline text-center">
+                    <li>
+                        <a href="/feed.xml">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-rss fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="https://twitter.com/wcgwuxinwei">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-twitter fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                    
+                    <li>
+                        <a href="https://www.facebook.com/mark.woo.1990">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-facebook fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                    
+                    <li>
+                        <a href="https://github.com/wuxinwei">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-github fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                </ul>
+                <p class="copyright text-muted">Copyright &copy; Fly Your Mind 2017</p>
+            </div>
+        </div>
+    </div>
+</footer>
+
+<!-- jQuery -->
+<script src="/js/jquery.min.js "></script>
+
+<!-- Bootstrap Core JavaScript -->
+<script src="/js/bootstrap.min.js "></script>
+
+<!-- Custom Theme JavaScript -->
+<script src="/js/prettify.js"></script>
+
+
+</body>
+
+</html>

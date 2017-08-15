@@ -1,22 +1,22 @@
 ---
 layout:     post
 title:      "分析Linux内核创建一个新进程的过程"
-subtitle:   "网易云课堂`Linux内核分析`课程"
+subtitle:   "网易云课堂Linux内核分析课程"
 date:       2015-04-12 13:00::00
 author:     "MarkWoo"
 header-img: "img/home-bg.jpg"
 ---
 
-#分析Linux内核创建一个新进程的过程
+# 分析Linux内核创建一个新进程的过程
 
-#前言说明
+# 前言说明
 本篇为网易云课堂Linux内核分析课程的第六周作业，本次作业我们将具体来分析`fork`系统调用，来分析Linux内核创建新进程的过程
 
 ---
-##关键词：`fork`, `系统调用`，`进程`
+## 关键词：`fork`, `系统调用`，`进程`
 
 ---
-*运行环境：**
+*运行环境：*
 
 - Ubuntu 14.04 LTS x64
 - gcc 4.9.2
@@ -24,13 +24,13 @@ header-img: "img/home-bg.jpg"
 - vim 7.4 with vundle
 
 ---
-#分析
-##分析方法说明
+# 分析
+## 分析方法说明
 - `PCB`包含了一个进程的重要运行信息，所以我们将围绕在创建一个新进程时，如何来建立一个新的`PCB`的这一个过程来进行分析，在`Linux`系统中，`PCB`主要是存储在一个叫做`task_struct`这一个结构体中，创建新进程仅能通过`fork`,`clone`,`vfork`等系统调用的形式来进行
 - 不管是`fork`，还是`clone`，`vfork`,他们都是通过`do_fork`来创建进程
 - 接下来我将通过精简版的`do_fork`代码，和`do_fork`中关键的过程来进行分析说明
 
-##do_fork()
+## do_fork()
 ```c
 long do_fork(unsigned long clone_flags,
 	      unsigned long stack_start,
@@ -117,7 +117,8 @@ long do_fork(unsigned long clone_flags,
 - 在`do_fork`中，`copy_process`函数是比较重要的，其作用是创建进程描述符以及子进程所需要的其他所有数据结构为子进程准备运行环境,下面我将深入`copy_process`中来详细分析
 
 ---
-##copy_process
+## copy_process
+
 ```c
 /*
 	创建进程描述符以及子进程所需要的其他所有数据结构
@@ -356,7 +357,8 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 - `copy_process`中会进行各种各样的初始化和信息检查，比如初始化自旋锁，初始化堆栈信息等等，同时会把新创建的子进程运行状态置为`TASK_RUNNING`（这里应该是就绪态）
 - `copy_process`中，会通过`copy_thread`来初始化子进程的内核栈,下面也会进行具体说明
 
-###dup_task_struct
+### dup_task_struct
+
 ```c
 static struct task_struct *dup_task_struct(struct task_struct *orig)
 {
@@ -412,7 +414,8 @@ free_tsk:
 
 >* 这其中有个比较重要的结构struct thread_info,但是在内部分配时，其实是一个union(联合体),这个union包括了一个内核堆栈,其结构如下图(图来自Understanding Linux kernel 3th)
 
-###copy_thread
+### copy_thread
+
 ```c
 // 初始化子进程的内核栈
 int copy_thread(unsigned long clone_flags, unsigned long sp,
@@ -484,10 +487,10 @@ int copy_thread(unsigned long clone_flags, unsigned long sp,
 - 在代码中，有两段这样的代码`p->thread.ip = (unsigned long) ret_from_kernel_thread;
 p->thread.ip = (unsigned long) ret_from_fork;`，**这里表面了在`fork`完成之后，新进程将会在哪里开始执行**,如果新的创建的新的线程是内核线程，那么将会从`ret_from_kernel_thread`开始执行，但是如果是普通的用户态线程，则将会从`p->thread.ip = (unsigned long) ret_from_fork`开始执行.
 
-#总结
+# 总结
 通过实验和fork系统调用的分析，让我认识到除了Linux系统中最开始启动时，创建的第一个始祖进程外，从`init进程`开始，其他所有的进程的创建方式均是通过`fork`，`clone`,`vfork`的方式，而他们又能够有归结到`do_fork`,就想孟宁老师说得道生一，一生二，二生三这样.
 
 ---
-##参考资料
+## 参考资料
 - Understanding The Linux Kernel, the 3rd edtion
 - Linux内核设计与实现，第三版，Robert Love, 机械工业出版社

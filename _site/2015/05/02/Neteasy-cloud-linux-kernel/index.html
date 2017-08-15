@@ -6,11 +6,11 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Mark Woo's Personal Blog">
+    <meta name="description" content="Mark Woo Personal Blog">
 
-    <title>Test Markdown - Mark Woo Home</title>
+    <title>关于 Linux 内核学习的一点点总结 - Fly Your Mind</title>
 
-    <link rel="canonical" href="http://wuxinwei.org/2015/02/02/Test-Markdown/">
+    <link rel="canonical" href="http://localhost:4000/2015/05/02/Neteasy-cloud-linux-kernel/">
 
     <!-- Bootstrap Core CSS -->
     <link rel="stylesheet" href="/css/bootstrap.min.css">
@@ -52,7 +52,7 @@
                 <span class="icon-bar"></span>
                 <span class="icon-bar"></span>
             </button>
-            <a class="navbar-brand" href="/">Mark Woo Home</a>
+            <a class="navbar-brand" href="/">Fly Your Mind</a>
         </div>
 
         <!-- Collect the nav links, forms, and other content for toggling -->
@@ -63,7 +63,7 @@
                 </li>
                 
                 <li>
-                    <a href="/about/">About Me</a>
+                    <a href="/about/">Resume</a>
                 </li>
                 
                 <li>
@@ -79,16 +79,16 @@
 
 
     <!-- Post Header -->
-<header class="intro-header" style="background-image: url('/img/post-bg-01.jpg')">
+<header class="intro-header" style="background-image: url('/img/home-bg.jpg')">
     <div class="container">
         <div class="row">
             <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
                 <div class="post-heading">
-                    <h1>Test Markdown</h1>
+                    <h1>关于 Linux 内核学习的一点点总结</h1>
                     
-                    <h2 class="subheading">Test Markdown code</h2>
+                    <h2 class="subheading">网易云课堂Linux内核分析课程</h2>
                     
-                    <span class="meta">Posted by MarkWoo on February 2, 2015</span>
+                    <span class="meta">Posted by MarkWoo on May 2, 2015</span>
                 </div>
             </div>
         </div>
@@ -101,29 +101,51 @@
         <div class="row">
             <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
 
-				<h1>Test level one title</h1>
+				<p>#关于Linux内核学习的一点点总结</p>
 
-<h2>Test level two title</h2>
+<hr />
+<p>##关键词：<code class="highlighter-rouge">Linux</code>, <code class="highlighter-rouge">操作系统</code>，<code class="highlighter-rouge">内核</code></p>
 
-<blockquote>
+<hr />
+<p>#总结
+由于本人是一个程序员，所以我会站在程序员的角度来进行一下总结：</p>
+
 <ul>
-<li>test column</li>
+  <li><code class="highlighter-rouge">Linux系统</code>本质上来说就是一个内核，仅仅在外层加上了<code class="highlighter-rouge">shell</code>与我们用户进行交互</li>
+  <li>对于程序员来说，Linux内核中以下几个方面会比较重要：
+    <blockquote>
+      <ul>
+        <li>内存管理，对于程序员来说，内存管理就是资源管理，如果才能写出高性能的程序，这点比较重要</li>
+        <li>进程管理，进程是代码的运行实体，了解操作系统的进程管理能帮助我们如何写好程序</li>
+      </ul>
+    </blockquote>
+  </li>
+  <li>对于初学者，我的建议参照<code class="highlighter-rouge">Linux 0.11</code>的代码来学习,有一本对应的书籍叫做<strong>Linux 0.11代码完全注释</strong></li>
 </ul>
-</blockquote>
 
-<h1>Test Code</h1>
-<div class="highlight"><pre><code class="language-c++" data-lang="c++"><span class="cp">#include &lt;iostream&gt;</span>
-<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span><span class="o">**</span> <span class="n">argv</span><span class="p">)</span> <span class="p">{</span> <span class="c1">//Test Code</span>
-    <span class="c1">//print(&quot;Hello World!&quot;);</span>
-    <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="s">&quot;haha&quot;</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
-    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
-<span class="p">}</span>
-</code></pre></div>
+<p>以上是本人认为的一些比较有用的总结,对于一些参考书而言，本人建议以下：</p>
+<ul>
+  <li>Understanding The Linux Kernel, the 3rd edtion</li>
+  <li>Linux内核设计与实现，第三版，Robert Love, 机械工业出版社</li>
+</ul>
+
+<hr />
+<p>##署名信息
+    吴欣伟 原创作品转载请注明出处:《Linux内核分析》MOOC课程：http://mooc.study.163.com/course/USTC-1000029000</p>
+
 
                 <hr>
 
                 <ul class="pager">
                     
+                    <li class="previous">
+                        <a href="/2015/04/19/Neteasy-cloud-linux-kernel/" data-toggle="tooltip" data-placement="top" title="通过分析exevc系统调用处理过程来理解Linux内核如何装载和启动一个可执行程序">&larr; Previous Post</a>
+                    </li>
+                    
+                    
+                    <li class="next">
+                        <a href="/2015/08/01/work-mitm_proxy/" data-toggle="tooltip" data-placement="top" title="MITM Proxy 环境搭建">Next Post &rarr;</a>
+                    </li>
                     
                 </ul>
 
@@ -180,7 +202,7 @@
                     </li>
                     
                 </ul>
-                <p class="copyright text-muted">Copyright &copy; Mark Woo Home 2015</p>
+                <p class="copyright text-muted">Copyright &copy; Fly Your Mind 2017</p>
             </div>
         </div>
     </div>
@@ -193,7 +215,7 @@
 <script src="/js/bootstrap.min.js "></script>
 
 <!-- Custom Theme JavaScript -->
-<script src="/js/prettify/prettify.js"></script>
+<script src="/js/prettify.js"></script>
 
 
 </body>

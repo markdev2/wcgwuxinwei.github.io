@@ -1,22 +1,22 @@
 ---
 layout:     post
 title:      "通过分析exevc系统调用处理过程来理解Linux内核如何装载和启动一个可执行程序"
-subtitle:   "网易云课堂`Linux内核分析`课程"
+subtitle:   "网易云课堂Linux内核分析课程"
 date:       2015-04-19 13:00::00
 author:     "MarkWoo"
 header-img: "img/home-bg.jpg"
 ---
 
-#通过分析exevc系统调用处理过程来理解Linux内核如何装载和启动一个可执行程序
+# 通过分析exevc系统调用处理过程来理解Linux内核如何装载和启动一个可执行程序
 
-#前言说明
+# 前言说明
 本篇为网易云课堂Linux内核分析课程的第七周作业，本次作业我们将具体来分析`exec*函数`对应的系统调用处理过程，来分析Linux内核如何来执行一个可执行程序,由于有一个在网易云课堂共同学习的朋友，代码部分是我们二人共同完成代码分析注释。
 
 ---
-##关键词：`exec`, `系统调用`，`进程`,`elf`,`可执行程序`
+## 关键词：`exec`, `系统调用`，`进程`,`elf`,`可执行程序`
 
 ---
-*运行环境：**
+*运行环境：*
 
 - Ubuntu 14.04 LTS x64
 - gcc 4.9.2
@@ -24,8 +24,8 @@ header-img: "img/home-bg.jpg"
 - vim 7.4 with vundle
 
 ---
-#过程分析
-##分析说明
+# 过程分析
+## 分析说明
 在进行详细的分析之前，首先我们来总结一下**Linux内核装载执行ELF程序**的大概过程：
 - 首先在用户层面，`shell`进行会调用`fork()`系统调用创建一个新进程
 - 新进程调用`execve()`系统调用执行制定的`ELF文件`
@@ -34,7 +34,7 @@ header-img: "img/home-bg.jpg"
 以上总结中，`fork()`系统调用过程在上一次作业中，我们都很清楚，这一次我们将来详细分析`execve()`系统调用，分析方法与上一次作业相同，即结合内核代码对整个流程进行抽象分析(对有中间的繁杂细节我们可以进行选择性的忽略，以能够让我们关注中间的重要流程)，All reight，Let's rock and roll!
 
 
-##分析
+## 分析
 `execve()`系统调用的原型如下：
 ```c
 int execve(const char *filename, char *const argv[],
@@ -42,7 +42,7 @@ int execve(const char *filename, char *const argv[],
 ```
 它所对应的三个参数分别是**程序文件名， 执行参数， 环境变量**,通过对内核代码的分析，我们知道`execve()`系统调用的相应入口是`sys_execve()`,在`sys_execve`之后,内核会分别调用`do_execve()`,`search_binary_handle()`,`load_elf_binary`等等，其中`do_execve()`是最主要的函数,所以接下来我们主要对他来进行具体分析
 
-###do_execve
+### do_execve
 ```c
 int do_execve(struct filename *filename,
 	const char __user *const __user *__argv,
@@ -151,7 +151,7 @@ struct linux_binfmt {
 ```
 
 ---
-###load_elf_binary()
+### load_elf_binary()
 ```c
 static int load_elf_binary(struct linux_binprm *bprm)
 {
@@ -276,7 +276,7 @@ static int load_elf_binary(struct linux_binprm *bprm)
 >* 将系统调用的返回地址修改为ELF可执行程序的入口点，这个入口点取决于程序的连接方式，对于静态链接的程序其入口就是e_entry,而动态链接的程序其入口是动态链接器
 >* 最后调用`start_thread`,修改保存在内核堆栈，但属于用户态的`eip`和`esp`,该函数代码如下:
 
-###start_thread
+### start_thread
 ```c
 void
 start_thread(struct pt_regs *regs, unsigned long new_ip, unsigned long new_sp)
@@ -295,11 +295,11 @@ start_thread(struct pt_regs *regs, unsigned long new_ip, unsigned long new_sp)
 }
 ```
 
-#总结
+# 总结
 如你所见，执行程序的过程是一个十分复杂的过程，`exec`本质在于替换`fork()`后，根据制定的可执行文件对进程中的相应部分进行替换,最后根据连接方式的不同来设置好执行起始位置，然后开始执行进程.
 
 
 ---
-##参考资料
+## 参考资料
 - Understanding The Linux Kernel, the 3rd edtion
 - Linux内核设计与实现，第三版，Robert Love, 机械工业出版社

@@ -1,18 +1,18 @@
 # Site settings
-title: Mark Woo Home
+title: Fly Your Mind
 header-img: img/home-bg.jpg
 email: wcgwuxinwei@gmail.com
-description: "Mark Woo's Personal Blog"
+description: "Mark Woo Personal Blog"
 baseurl: ""
-url: "http://wuxinwei.org"
+url: "https://blog.wuxinwei.org"
 twitter_username:   wcgwuxinwei
 github_username:    wuxinwei
 facebook_username:  mark.woo.1990
 
 # Build settings
-# markdown: kramdown
-markdown: redcarpet
-highlighter: pygments
+markdown: kramdown
+#highlighter: pygments
+highlighter: rouge
 permalink: pretty
 paginate: 5
 exclude: ["less","node_modules","Gruntfile.js","package.json","README.md"]

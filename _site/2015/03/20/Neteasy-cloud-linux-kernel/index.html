@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Mark Woo Personal Blog">
+
+    <title>通过反汇编一个简单的C程序，分析汇编代码理解计算机是如何工作的 - Fly Your Mind</title>
+
+    <link rel="canonical" href="http://localhost:4000/2015/03/20/Neteasy-cloud-linux-kernel/">
+
+    <!-- Bootstrap Core CSS -->
+    <link rel="stylesheet" href="/css/bootstrap.min.css">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/css/clean-blog.css">
+
+    <!-- Pygments Github CSS -->
+    <link rel="stylesheet" href="/css/syntax.css">
+
+    <!-- Custom Fonts -->
+    <link href="http://maxcdn.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.min.css" rel="stylesheet" type="text/css">
+    <link href='http://fonts.googleapis.com/css?family=Lora:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
+    <link href='http://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800' rel='stylesheet' type='text/css'>
+
+    <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+    <!--[if lt IE 9]>
+        <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+        <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+    <![endif]-->
+
+    <!-- google Prettify CSS -->
+	<link rel="stylesheet" href="/css/prettify.css">
+
+</head>
+
+
+<body>
+
+    <!-- Navigation -->
+<nav class="navbar navbar-default navbar-custom navbar-fixed-top">
+    <div class="container-fluid">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header page-scroll">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="/">Fly Your Mind</a>
+        </div>
+
+        <!-- Collect the nav links, forms, and other content for toggling -->
+        <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+            <ul class="nav navbar-nav navbar-right">
+                <li>
+                    <a href="/">Home</a>
+                </li>
+                
+                <li>
+                    <a href="/about/">Resume</a>
+                </li>
+                
+                <li>
+                    <a href="/contact/">Contact</a>
+                </li>
+                
+            </ul>
+        </div>
+        <!-- /.navbar-collapse -->
+    </div>
+    <!-- /.container -->
+</nav>
+
+
+    <!-- Post Header -->
+<header class="intro-header" style="background-image: url('/img/home-bg.jpg')">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+                <div class="post-heading">
+                    <h1>通过反汇编一个简单的C程序，分析汇编代码理解计算机是如何工作的</h1>
+                    
+                    <h2 class="subheading">网易云课堂Linux内核分析课程</h2>
+                    
+                    <span class="meta">Posted by MarkWoo on March 20, 2015</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- Post Content -->
+<article>
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+
+				<h1 id="通过反汇编一个简单的c程序分析汇编代码理解计算机是如何工作的">通过反汇编一个简单的C程序，分析汇编代码理解计算机是如何工作的</h1>
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="kt">int</span> <span class="nf">g</span><span class="p">(</span><span class="kt">int</span> <span class="n">x</span><span class="p">)</span> <span class="p">{</span>
+	<span class="k">return</span> <span class="n">x</span> <span class="o">+</span> <span class="mi">109</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">f</span><span class="p">(</span><span class="kt">int</span> <span class="n">x</span><span class="p">)</span> <span class="p">{</span>
+	<span class="k">return</span> <span class="n">g</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+	<span class="k">return</span> <span class="n">f</span><span class="p">(</span><span class="mi">122</span><span class="p">)</span> <span class="o">+</span> <span class="mi">3</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<h1 id="汇编代码的工作过程分析">汇编代码的工作过程分析</h1>
+<div class="highlighter-rouge"><pre class="highlight"><code>g:
+	pushl	%ebp
+	movl	%esp, %ebp
+	movl	8(%ebp), %eax
+	addl	$109, %eax
+	popl	%ebp
+	ret
+f:
+	pushl	%ebp
+	movl	%esp, %ebp
+	pushl	8(%ebp)
+	call	g
+	addl	$4, %esp
+	leave
+	ret
+main:
+	pushl	%ebp
+	movl	%esp, %ebp
+	pushl	$122
+	call	f
+	addl	$4, %esp
+	addl	$3, %eax
+	leave
+	ret
+</code></pre>
+</div>
+
+<p><strong>为了写作方便，ebp,esp等扩展的寄存器在以下均写作为ep,sp等</strong>
+首先，main函数为该程序的开始入口，所以从main函数开始分析:</p>
+
+<blockquote>
+  <ul>
+    <li>在line 17 ~ line 18是进入main函数(enter操作)，其过程是：
+首先是 <code class="highlighter-rouge">pushl  %ebp</code> 操作：sp-4，然后将当前bp的值放入sp所指向的内存区块，然后是<code class="highlighter-rouge">movl  %esp, %ebp</code>：将esp的值赋值给ebp，这样bp和sp将指向同一个位置，就是重新指向了sp所指向的栈顶位置.</li>
+    <li>line 19操作将立即数122入栈，做好准备，以便于进行加法操作时使用.</li>
+  </ul>
+</blockquote>
+
+<p>在line 20开始调用f函数，这里开始对f函数进行分析：</p>
+
+<blockquote>
+  <ul>
+    <li>call f完毕后，此时堆栈情况：sp(指向ip，ip指向cs中的f函数执行段),bp(指向sp前一个位置)</li>
+    <li>line 9 ~ line 10为enter操作，进入函数其操作过程同<code class="highlighter-rouge">main函数</code>的操作过程，经过完此时后状态将是，bp与sp指向同一个栈顶位置，此时sp中所指向的内容是bp在执行进入f函数的enter操作之前的bp的值(<strong>注意，这里的bp值和main函数中的bp值不一样</strong>).</li>
+    <li>执行到line 11时，将bp加上8的值（即122的值）放入sp所指向的被分配的内存区块，为函数g的调用做准备.</li>
+  </ul>
+</blockquote>
+
+<p>在line 12是开始调用g函数，这里开始对g函数进行分析：</p>
+
+<blockquote>
+  <ul>
+    <li>line 2 ~ line 3 执行enter操作，同f函数.</li>
+    <li>line 4 将bp+8的所指向的值放入ax中，即122，为下面的加法操作做准备.</li>
+    <li>line 5 将立即数109在ax中的值做加法操作，然后结果放入ax中.</li>
+    <li>line 6 弹出栈顶的ip，sp+4</li>
+    <li>line 7 返回g函数，执行完后，弹出栈顶的内容放入ip中，此时堆栈回到了调用函数g之前的状态,得到g(122)</li>
+  </ul>
+</blockquote>
+
+<p>回到f函数中：</p>
+
+<blockquote>
+  <ul>
+    <li>line 13 ~ 15 执行后，堆栈恢复到函数f调用之，得到f(122)</li>
+  </ul>
+</blockquote>
+
+<p>最后，回到main函数:</p>
+
+<blockquote>
+  <ul>
+    <li>line 21 ~ line 22 执行，sp+4， sp指向bp值（此bp的值为指向栈底的值），<code class="highlighter-rouge">add  $3， $eax</code> ，ax中的存储的值+3</li>
+    <li>line 23 ~ line 24，main函数执行完毕，堆栈回到初始状态(sp,bp均指向栈底)，返回计算值。</li>
+  </ul>
+</blockquote>
+
+<h1 id="总结">总结</h1>
+
+<p>通过分析这段C语言代码的汇编代码，可以得到计算机程序执行的几个特点：</p>
+
+<blockquote>
+  <ul>
+    <li>总是通过EIP取得下一段要执行的代码，然后执行该段代码，即总是<strong>取指执行</strong></li>
+    <li>当进行函数调用时，堆栈会保存调用函数之前的程序状态，同时堆栈指针bp和sp会在一个<code class="highlighter-rouge">伪初始位置</code></li>
+    <li>每次函数调用结束，堆栈指针bp和sp回复到调用之前的状态</li>
+  </ul>
+</blockquote>
+
+
+                <hr>
+
+                <ul class="pager">
+                    
+                    
+                    <li class="next">
+                        <a href="/2015/03/24/Neteasy-cloud-linux-kernel/" data-toggle="tooltip" data-placement="top" title="通过分析一个简化版时间片轮转多道程序内核代码来认识操作系统中的进程调度">Next Post &rarr;</a>
+                    </li>
+                    
+                </ul>
+
+            </div>
+        </div>
+    </div>
+</article>
+
+<hr>
+
+
+    <!-- Footer -->
+<footer>
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+                <ul class="list-inline text-center">
+                    <li>
+                        <a href="/feed.xml">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-rss fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="https://twitter.com/wcgwuxinwei">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-twitter fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                    
+                    <li>
+                        <a href="https://www.facebook.com/mark.woo.1990">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-facebook fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                    
+                    <li>
+                        <a href="https://github.com/wuxinwei">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-github fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                </ul>
+                <p class="copyright text-muted">Copyright &copy; Fly Your Mind 2017</p>
+            </div>
+        </div>
+    </div>
+</footer>
+
+<!-- jQuery -->
+<script src="/js/jquery.min.js "></script>
+
+<!-- Bootstrap Core JavaScript -->
+<script src="/js/bootstrap.min.js "></script>
+
+<!-- Custom Theme JavaScript -->
+<script src="/js/prettify.js"></script>
+
+
+</body>
+
+</html>

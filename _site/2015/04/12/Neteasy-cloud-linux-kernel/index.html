@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Mark Woo Personal Blog">
+
+    <title>分析Linux内核创建一个新进程的过程 - Fly Your Mind</title>
+
+    <link rel="canonical" href="http://localhost:4000/2015/04/12/Neteasy-cloud-linux-kernel/">
+
+    <!-- Bootstrap Core CSS -->
+    <link rel="stylesheet" href="/css/bootstrap.min.css">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/css/clean-blog.css">
+
+    <!-- Pygments Github CSS -->
+    <link rel="stylesheet" href="/css/syntax.css">
+
+    <!-- Custom Fonts -->
+    <link href="http://maxcdn.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.min.css" rel="stylesheet" type="text/css">
+    <link href='http://fonts.googleapis.com/css?family=Lora:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
+    <link href='http://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800' rel='stylesheet' type='text/css'>
+
+    <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+    <!--[if lt IE 9]>
+        <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+        <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+    <![endif]-->
+
+    <!-- google Prettify CSS -->
+	<link rel="stylesheet" href="/css/prettify.css">
+
+</head>
+
+
+<body>
+
+    <!-- Navigation -->
+<nav class="navbar navbar-default navbar-custom navbar-fixed-top">
+    <div class="container-fluid">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header page-scroll">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="/">Fly Your Mind</a>
+        </div>
+
+        <!-- Collect the nav links, forms, and other content for toggling -->
+        <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+            <ul class="nav navbar-nav navbar-right">
+                <li>
+                    <a href="/">Home</a>
+                </li>
+                
+                <li>
+                    <a href="/about/">Resume</a>
+                </li>
+                
+                <li>
+                    <a href="/contact/">Contact</a>
+                </li>
+                
+            </ul>
+        </div>
+        <!-- /.navbar-collapse -->
+    </div>
+    <!-- /.container -->
+</nav>
+
+
+    <!-- Post Header -->
+<header class="intro-header" style="background-image: url('/img/home-bg.jpg')">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+                <div class="post-heading">
+                    <h1>分析Linux内核创建一个新进程的过程</h1>
+                    
+                    <h2 class="subheading">网易云课堂Linux内核分析课程</h2>
+                    
+                    <span class="meta">Posted by MarkWoo on April 12, 2015</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- Post Content -->
+<article>
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+
+				<h1 id="分析linux内核创建一个新进程的过程">分析Linux内核创建一个新进程的过程</h1>
+
+<h1 id="前言说明">前言说明</h1>
+<p>本篇为网易云课堂Linux内核分析课程的第六周作业，本次作业我们将具体来分析<code class="highlighter-rouge">fork</code>系统调用，来分析Linux内核创建新进程的过程</p>
+
+<hr />
+<h2 id="关键词fork-系统调用进程">关键词：<code class="highlighter-rouge">fork</code>, <code class="highlighter-rouge">系统调用</code>，<code class="highlighter-rouge">进程</code></h2>
+
+<hr />
+<p><em>运行环境：</em></p>
+
+<ul>
+  <li>Ubuntu 14.04 LTS x64</li>
+  <li>gcc 4.9.2</li>
+  <li>gdb 7.8</li>
+  <li>vim 7.4 with vundle</li>
+</ul>
+
+<hr />
+<h1 id="分析">分析</h1>
+<h2 id="分析方法说明">分析方法说明</h2>
+<ul>
+  <li><code class="highlighter-rouge">PCB</code>包含了一个进程的重要运行信息，所以我们将围绕在创建一个新进程时，如何来建立一个新的<code class="highlighter-rouge">PCB</code>的这一个过程来进行分析，在<code class="highlighter-rouge">Linux</code>系统中，<code class="highlighter-rouge">PCB</code>主要是存储在一个叫做<code class="highlighter-rouge">task_struct</code>这一个结构体中，创建新进程仅能通过<code class="highlighter-rouge">fork</code>,<code class="highlighter-rouge">clone</code>,<code class="highlighter-rouge">vfork</code>等系统调用的形式来进行</li>
+  <li>不管是<code class="highlighter-rouge">fork</code>，还是<code class="highlighter-rouge">clone</code>，<code class="highlighter-rouge">vfork</code>,他们都是通过<code class="highlighter-rouge">do_fork</code>来创建进程</li>
+  <li>接下来我将通过精简版的<code class="highlighter-rouge">do_fork</code>代码，和<code class="highlighter-rouge">do_fork</code>中关键的过程来进行分析说明</li>
+</ul>
+
+<h2 id="do_fork">do_fork()</h2>
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="kt">long</span> <span class="nf">do_fork</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">clone_flags</span><span class="p">,</span>
+	      <span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">stack_start</span><span class="p">,</span>
+	      <span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">stack_size</span><span class="p">,</span>
+	      <span class="kt">int</span> <span class="n">__user</span> <span class="o">*</span><span class="n">parent_tidptr</span><span class="p">,</span>
+	      <span class="kt">int</span> <span class="n">__user</span> <span class="o">*</span><span class="n">child_tidptr</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">struct</span> <span class="n">task_struct</span> <span class="o">*</span><span class="n">p</span><span class="p">;</span> <span class="c1">//进程描述符结构体指针
+</span>	<span class="kt">int</span> <span class="n">trace</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+	<span class="kt">long</span> <span class="n">nr</span><span class="p">;</span> <span class="c1">//总的pid数量
+</span>
+	<span class="cm">/*
+	 * Determine whether and which event to report to ptracer.  When
+	 * called from kernel_thread or CLONE_UNTRACED is explicitly
+	 * requested, no event is reported; otherwise, report if the event
+	 * for the type of forking is enabled.
+	 */</span>
+	<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">clone_flags</span> <span class="o">&amp;</span> <span class="n">CLONE_UNTRACED</span><span class="p">))</span> <span class="p">{</span>
+		<span class="k">if</span> <span class="p">(</span><span class="n">clone_flags</span> <span class="o">&amp;</span> <span class="n">CLONE_VFORK</span><span class="p">)</span>
+			<span class="n">trace</span> <span class="o">=</span> <span class="n">PTRACE_EVENT_VFORK</span><span class="p">;</span>
+		<span class="k">else</span> <span class="k">if</span> <span class="p">((</span><span class="n">clone_flags</span> <span class="o">&amp;</span> <span class="n">CSIGNAL</span><span class="p">)</span> <span class="o">!=</span> <span class="n">SIGCHLD</span><span class="p">)</span>
+			<span class="n">trace</span> <span class="o">=</span> <span class="n">PTRACE_EVENT_CLONE</span><span class="p">;</span>
+		<span class="k">else</span>
+			<span class="n">trace</span> <span class="o">=</span> <span class="n">PTRACE_EVENT_FORK</span><span class="p">;</span>
+
+		<span class="k">if</span> <span class="p">(</span><span class="n">likely</span><span class="p">(</span><span class="o">!</span><span class="n">ptrace_event_enabled</span><span class="p">(</span><span class="n">current</span><span class="p">,</span> <span class="n">trace</span><span class="p">)))</span>
+			<span class="n">trace</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+	<span class="p">}</span>
+
+	<span class="c1">// 复制进程描述符，返回创建的task_struct的指针
+</span>	<span class="n">p</span> <span class="o">=</span> <span class="n">copy_process</span><span class="p">(</span><span class="n">clone_flags</span><span class="p">,</span> <span class="n">stack_start</span><span class="p">,</span> <span class="n">stack_size</span><span class="p">,</span>
+			 <span class="n">child_tidptr</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="n">trace</span><span class="p">);</span>
+	<span class="cm">/*
+	 * Do this prior waking up the new thread - the thread pointer
+	 * might get invalid after that point, if the thread exits quickly.
+	 */</span>
+	<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">IS_ERR</span><span class="p">(</span><span class="n">p</span><span class="p">))</span> <span class="p">{</span>
+		<span class="k">struct</span> <span class="n">completion</span> <span class="n">vfork</span><span class="p">;</span>
+		<span class="k">struct</span> <span class="n">pid</span> <span class="o">*</span><span class="n">pid</span><span class="p">;</span>
+
+		<span class="n">trace_sched_process_fork</span><span class="p">(</span><span class="n">current</span><span class="p">,</span> <span class="n">p</span><span class="p">);</span>
+
+		<span class="c1">// 取出task结构体内的pid
+</span>		<span class="n">pid</span> <span class="o">=</span> <span class="n">get_task_pid</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">PIDTYPE_PID</span><span class="p">);</span>
+		<span class="n">nr</span> <span class="o">=</span> <span class="n">pid_vnr</span><span class="p">(</span><span class="n">pid</span><span class="p">);</span>
+
+		<span class="k">if</span> <span class="p">(</span><span class="n">clone_flags</span> <span class="o">&amp;</span> <span class="n">CLONE_PARENT_SETTID</span><span class="p">)</span>
+			<span class="n">put_user</span><span class="p">(</span><span class="n">nr</span><span class="p">,</span> <span class="n">parent_tidptr</span><span class="p">);</span>
+
+		<span class="c1">// 如果使用的是vfork，那么必须采用某种完成机制，确保父进程后运行
+</span>		<span class="k">if</span> <span class="p">(</span><span class="n">clone_flags</span> <span class="o">&amp;</span> <span class="n">CLONE_VFORK</span><span class="p">)</span> <span class="p">{</span>
+			<span class="n">p</span><span class="o">-&gt;</span><span class="n">vfork_done</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">vfork</span><span class="p">;</span>
+			<span class="n">init_completion</span><span class="p">(</span><span class="o">&amp;</span><span class="n">vfork</span><span class="p">);</span>
+			<span class="n">get_task_struct</span><span class="p">(</span><span class="n">p</span><span class="p">);</span>
+		<span class="p">}</span>
+
+		<span class="c1">// 将子进程添加到调度器的队列，使得子进程有机会获得CPU
+</span>		<span class="n">wake_up_new_task</span><span class="p">(</span><span class="n">p</span><span class="p">);</span>
+
+		<span class="cm">/* forking complete and child started to run, tell ptracer */</span>
+		<span class="k">if</span> <span class="p">(</span><span class="n">unlikely</span><span class="p">(</span><span class="n">trace</span><span class="p">))</span>
+			<span class="n">ptrace_event_pid</span><span class="p">(</span><span class="n">trace</span><span class="p">,</span> <span class="n">pid</span><span class="p">);</span>
+
+		<span class="c1">// 如果设置了 CLONE_VFORK 则将父进程插入等待队列，并挂起父进程直到子进程释放自己的内存空间
+</span>		<span class="c1">// 保证子进程优先于父进程运行
+</span>		<span class="k">if</span> <span class="p">(</span><span class="n">clone_flags</span> <span class="o">&amp;</span> <span class="n">CLONE_VFORK</span><span class="p">)</span> <span class="p">{</span>
+			<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">wait_for_vfork_done</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">vfork</span><span class="p">))</span>
+				<span class="n">ptrace_event_pid</span><span class="p">(</span><span class="n">PTRACE_EVENT_VFORK_DONE</span><span class="p">,</span> <span class="n">pid</span><span class="p">);</span>
+		<span class="p">}</span>
+
+		<span class="n">put_pid</span><span class="p">(</span><span class="n">pid</span><span class="p">);</span>
+	<span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+		<span class="n">nr</span> <span class="o">=</span> <span class="n">PTR_ERR</span><span class="p">(</span><span class="n">p</span><span class="p">);</span>
+	<span class="p">}</span>
+	<span class="k">return</span> <span class="n">nr</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+<ul>
+  <li>对于<code class="highlighter-rouge">do_fork</code>中比较重要的过程，我已经注释加以说明，这里我抽象的加以把过程总结一边
+    <blockquote>
+      <ul>
+        <li>通过<code class="highlighter-rouge">copy_process</code>来复制进程描述符，返回新创建的子进程的task_struct的指针(即PCB指针)</li>
+        <li>将新创建的子进程放入调度器的队列中，让其有机会获得CPU,并且要确保子进程要先于父进程运行，</li>
+        <li><strong>这里为什么要确保子进程先于父进程运行呢？</strong>，答案是在Linux系统中，有一个叫做copy_on_write技术（写时拷贝技术），该技术的作用是创建新进程时可以减少系统开销，具体该技术的细节请各位Google之，这里子进程先于父进程运行可以保证写时拷贝技术发挥其作用</li>
+      </ul>
+    </blockquote>
+  </li>
+  <li>这里有一个<strong>重点的地方需要说明</strong>,在使用<code class="highlighter-rouge">get_pid</code>系统调用时，返回的并不是进程的<code class="highlighter-rouge">pid</code>,而是线程的<code class="highlighter-rouge">tgid</code>,<code class="highlighter-rouge">tgid</code>指的是一个线程组当时领头的进程的pid</li>
+  <li>在<code class="highlighter-rouge">do_fork</code>中，<code class="highlighter-rouge">copy_process</code>函数是比较重要的，其作用是创建进程描述符以及子进程所需要的其他所有数据结构为子进程准备运行环境,下面我将深入<code class="highlighter-rouge">copy_process</code>中来详细分析</li>
+</ul>
+
+<hr />
+<h2 id="copy_process">copy_process</h2>
+
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="cm">/*
+	创建进程描述符以及子进程所需要的其他所有数据结构
+	为子进程准备运行环境
+*/</span>
+<span class="k">static</span> <span class="k">struct</span> <span class="n">task_struct</span> <span class="o">*</span><span class="nf">copy_process</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">clone_flags</span><span class="p">,</span>
+					<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">stack_start</span><span class="p">,</span>
+					<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">stack_size</span><span class="p">,</span>
+					<span class="kt">int</span> <span class="n">__user</span> <span class="o">*</span><span class="n">child_tidptr</span><span class="p">,</span>
+					<span class="k">struct</span> <span class="n">pid</span> <span class="o">*</span><span class="n">pid</span><span class="p">,</span>
+					<span class="kt">int</span> <span class="n">trace</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="p">...</span>
+	<span class="kt">int</span> <span class="n">retval</span><span class="p">;</span>
+	<span class="k">struct</span> <span class="n">task_struct</span> <span class="o">*</span><span class="n">p</span><span class="p">;</span>
+
+    <span class="p">...</span>
+	<span class="c1">// 分配一个新的task_struct，此时的p与当前进程的task，仅仅是stack地址不同
+</span>	<span class="n">p</span> <span class="o">=</span> <span class="n">dup_task_struct</span><span class="p">(</span><span class="n">current</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">p</span><span class="p">)</span>
+		<span class="k">goto</span> <span class="n">fork_out</span><span class="p">;</span>
+
+	<span class="err">···</span>
+	
+	<span class="n">retval</span> <span class="o">=</span> <span class="o">-</span><span class="n">EAGAIN</span><span class="p">;</span>
+	<span class="c1">// 检查该用户的进程数是否超过限制
+</span>	<span class="k">if</span> <span class="p">(</span><span class="n">atomic_read</span><span class="p">(</span><span class="o">&amp;</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">real_cred</span><span class="o">-&gt;</span><span class="n">user</span><span class="o">-&gt;</span><span class="n">processes</span><span class="p">)</span> <span class="o">&gt;=</span>
+			<span class="n">task_rlimit</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">RLIMIT_NPROC</span><span class="p">))</span> <span class="p">{</span>
+		<span class="c1">// 检查该用户是否具有相关权限，不一定是root
+</span>		<span class="k">if</span> <span class="p">(</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">real_cred</span><span class="o">-&gt;</span><span class="n">user</span> <span class="o">!=</span> <span class="n">INIT_USER</span> <span class="o">&amp;&amp;</span>
+		    <span class="o">!</span><span class="n">capable</span><span class="p">(</span><span class="n">CAP_SYS_RESOURCE</span><span class="p">)</span> <span class="o">&amp;&amp;</span> <span class="o">!</span><span class="n">capable</span><span class="p">(</span><span class="n">CAP_SYS_ADMIN</span><span class="p">))</span>
+			<span class="k">goto</span> <span class="n">bad_fork_free</span><span class="p">;</span>
+	<span class="p">}</span>
+	<span class="n">current</span><span class="o">-&gt;</span><span class="n">flags</span> <span class="o">&amp;=</span> <span class="o">~</span><span class="n">PF_NPROC_EXCEEDED</span><span class="p">;</span>
+
+	<span class="n">retval</span> <span class="o">=</span> <span class="n">copy_creds</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">clone_flags</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">retval</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span>
+		<span class="k">goto</span> <span class="n">bad_fork_free</span><span class="p">;</span>
+
+	<span class="cm">/*
+	 * If multiple threads are within copy_process(), then this check
+	 * triggers too late. This doesn't hurt, the check is only there
+	 * to stop root fork bombs.
+	 */</span>
+	<span class="n">retval</span> <span class="o">=</span> <span class="o">-</span><span class="n">EAGAIN</span><span class="p">;</span>
+	<span class="c1">// 检查进程数量是否超过 max_threads，后者取决于内存的大小
+</span>	<span class="k">if</span> <span class="p">(</span><span class="n">nr_threads</span> <span class="o">&gt;=</span> <span class="n">max_threads</span><span class="p">)</span>
+		<span class="k">goto</span> <span class="n">bad_fork_cleanup_count</span><span class="p">;</span>
+
+	<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">try_module_get</span><span class="p">(</span><span class="n">task_thread_info</span><span class="p">(</span><span class="n">p</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">exec_domain</span><span class="o">-&gt;</span><span class="n">module</span><span class="p">))</span>
+		<span class="k">goto</span> <span class="n">bad_fork_cleanup_count</span><span class="p">;</span>
+
+	<span class="n">delayacct_tsk_init</span><span class="p">(</span><span class="n">p</span><span class="p">);</span>	<span class="cm">/* Must remain after dup_task_struct() */</span>
+	<span class="n">p</span><span class="o">-&gt;</span><span class="n">flags</span> <span class="o">&amp;=</span> <span class="o">~</span><span class="p">(</span><span class="n">PF_SUPERPRIV</span> <span class="o">|</span> <span class="n">PF_WQ_WORKER</span><span class="p">);</span>
+	<span class="c1">// 表明子进程还没有调用exec系统调用
+</span>	<span class="n">p</span><span class="o">-&gt;</span><span class="n">flags</span> <span class="o">|=</span> <span class="n">PF_FORKNOEXEC</span><span class="p">;</span>
+	<span class="n">INIT_LIST_HEAD</span><span class="p">(</span><span class="o">&amp;</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">children</span><span class="p">);</span>
+	<span class="n">INIT_LIST_HEAD</span><span class="p">(</span><span class="o">&amp;</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">sibling</span><span class="p">);</span>
+	<span class="n">rcu_copy_process</span><span class="p">(</span><span class="n">p</span><span class="p">);</span>
+	<span class="n">p</span><span class="o">-&gt;</span><span class="n">vfork_done</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+
+	<span class="c1">// 初始化自旋锁
+</span>	<span class="n">spin_lock_init</span><span class="p">(</span><span class="o">&amp;</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">alloc_lock</span><span class="p">);</span>
+
+	<span class="c1">// 初始化挂起信号
+</span>	<span class="n">init_sigpending</span><span class="p">(</span><span class="o">&amp;</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">pending</span><span class="p">);</span>
+
+	<span class="c1">// 初始化定时器
+</span>	<span class="n">p</span><span class="o">-&gt;</span><span class="n">utime</span> <span class="o">=</span> <span class="n">p</span><span class="o">-&gt;</span><span class="n">stime</span> <span class="o">=</span> <span class="n">p</span><span class="o">-&gt;</span><span class="n">gtime</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+	<span class="n">p</span><span class="o">-&gt;</span><span class="n">utimescaled</span> <span class="o">=</span> <span class="n">p</span><span class="o">-&gt;</span><span class="n">stimescaled</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+<span class="cp">#ifndef CONFIG_VIRT_CPU_ACCOUNTING_NATIVE
+</span>	<span class="n">p</span><span class="o">-&gt;</span><span class="n">prev_cputime</span><span class="p">.</span><span class="n">utime</span> <span class="o">=</span> <span class="n">p</span><span class="o">-&gt;</span><span class="n">prev_cputime</span><span class="p">.</span><span class="n">stime</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+<span class="cp">#endif
+#ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
+</span>	<span class="n">seqlock_init</span><span class="p">(</span><span class="o">&amp;</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">vtime_seqlock</span><span class="p">);</span>
+	<span class="n">p</span><span class="o">-&gt;</span><span class="n">vtime_snap</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+	<span class="n">p</span><span class="o">-&gt;</span><span class="n">vtime_snap_whence</span> <span class="o">=</span> <span class="n">VTIME_SLEEPING</span><span class="p">;</span>
+<span class="cp">#endif
+</span>
+    <span class="p">...</span>
+
+<span class="cp">#ifdef CONFIG_DEBUG_MUTEXES
+</span>	<span class="n">p</span><span class="o">-&gt;</span><span class="n">blocked_on</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span> <span class="cm">/* not blocked yet */</span>
+<span class="cp">#endif
+#ifdef CONFIG_BCACHE
+</span>	<span class="n">p</span><span class="o">-&gt;</span><span class="n">sequential_io</span>	<span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+	<span class="n">p</span><span class="o">-&gt;</span><span class="n">sequential_io_avg</span>	<span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+<span class="cp">#endif
+</span>
+	<span class="cm">/* Perform scheduler related setup. Assign this task to a CPU. */</span>
+	
+	<span class="c1">// 完成对新进程调度程序数据结构的初始化，并把新进程的状态设置为TASK_RUNNING
+</span>	<span class="c1">// 同时将thread_info中得preempt_count置为1，禁止内核抢占
+</span>	<span class="n">retval</span> <span class="o">=</span> <span class="n">sched_fork</span><span class="p">(</span><span class="n">clone_flags</span><span class="p">,</span> <span class="n">p</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">retval</span><span class="p">)</span>
+		<span class="k">goto</span> <span class="n">bad_fork_cleanup_policy</span><span class="p">;</span>
+
+	<span class="n">retval</span> <span class="o">=</span> <span class="n">perf_event_init_task</span><span class="p">(</span><span class="n">p</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">retval</span><span class="p">)</span>
+		<span class="k">goto</span> <span class="n">bad_fork_cleanup_policy</span><span class="p">;</span>
+	<span class="n">retval</span> <span class="o">=</span> <span class="n">audit_alloc</span><span class="p">(</span><span class="n">p</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">retval</span><span class="p">)</span>
+		<span class="k">goto</span> <span class="n">bad_fork_cleanup_perf</span><span class="p">;</span>
+	<span class="cm">/* copy all the process information */</span>
+
+	<span class="c1">// 复制所有的进程信息
+</span>	<span class="n">shm_init_task</span><span class="p">(</span><span class="n">p</span><span class="p">);</span>
+	<span class="n">retval</span> <span class="o">=</span> <span class="n">copy_semundo</span><span class="p">(</span><span class="n">clone_flags</span><span class="p">,</span> <span class="n">p</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">retval</span><span class="p">)</span>
+		<span class="k">goto</span> <span class="n">bad_fork_cleanup_audit</span><span class="p">;</span>
+	<span class="n">retval</span> <span class="o">=</span> <span class="n">copy_files</span><span class="p">(</span><span class="n">clone_flags</span><span class="p">,</span> <span class="n">p</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">retval</span><span class="p">)</span>
+		<span class="k">goto</span> <span class="n">bad_fork_cleanup_semundo</span><span class="p">;</span>
+		
+	<span class="p">...</span>
+
+	<span class="c1">// 初始化子进程的内核栈
+</span>	<span class="n">retval</span> <span class="o">=</span> <span class="n">copy_thread</span><span class="p">(</span><span class="n">clone_flags</span><span class="p">,</span> <span class="n">stack_start</span><span class="p">,</span> <span class="n">stack_size</span><span class="p">,</span> <span class="n">p</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">retval</span><span class="p">)</span>
+		<span class="k">goto</span> <span class="n">bad_fork_cleanup_io</span><span class="p">;</span>
+
+	<span class="k">if</span> <span class="p">(</span><span class="n">pid</span> <span class="o">!=</span> <span class="o">&amp;</span><span class="n">init_struct_pid</span><span class="p">)</span> <span class="p">{</span>
+		<span class="n">retval</span> <span class="o">=</span> <span class="o">-</span><span class="n">ENOMEM</span><span class="p">;</span>
+		<span class="c1">// 这里为子进程分配了新的pid号
+</span>		<span class="n">pid</span> <span class="o">=</span> <span class="n">alloc_pid</span><span class="p">(</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">nsproxy</span><span class="o">-&gt;</span><span class="n">pid_ns_for_children</span><span class="p">);</span>
+		<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">pid</span><span class="p">)</span>
+			<span class="k">goto</span> <span class="n">bad_fork_cleanup_io</span><span class="p">;</span>
+	<span class="p">}</span>
+
+	<span class="p">...</span>
+	
+	<span class="cm">/*
+	 * sigaltstack should be cleared when sharing the same VM
+	 */</span>
+	<span class="k">if</span> <span class="p">((</span><span class="n">clone_flags</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">CLONE_VM</span><span class="o">|</span><span class="n">CLONE_VFORK</span><span class="p">))</span> <span class="o">==</span> <span class="n">CLONE_VM</span><span class="p">)</span>
+		<span class="n">p</span><span class="o">-&gt;</span><span class="n">sas_ss_sp</span> <span class="o">=</span> <span class="n">p</span><span class="o">-&gt;</span><span class="n">sas_ss_size</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+	<span class="cm">/*
+	 * Syscall tracing and stepping should be turned off in the
+	 * child regardless of CLONE_PTRACE.
+	 */</span>
+	<span class="n">user_disable_single_step</span><span class="p">(</span><span class="n">p</span><span class="p">);</span>
+	
+	<span class="c1">// 清除子进程thread_info结构的 TIF_SYSCALL_TRACE，防止 ret_from_fork将系统调用消息通知给调试进程
+</span>	<span class="n">clear_tsk_thread_flag</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">TIF_SYSCALL_TRACE</span><span class="p">);</span>
+<span class="cp">#ifdef TIF_SYSCALL_EMU
+</span>	<span class="n">clear_tsk_thread_flag</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">TIF_SYSCALL_EMU</span><span class="p">);</span>
+<span class="cp">#endif
+</span>	<span class="n">clear_all_latency_tracing</span><span class="p">(</span><span class="n">p</span><span class="p">);</span>
+
+	<span class="cm">/* ok, now we should be set up.. */</span>
+	
+	<span class="c1">// 设置子进程的pid
+</span>	<span class="n">p</span><span class="o">-&gt;</span><span class="n">pid</span> <span class="o">=</span> <span class="n">pid_nr</span><span class="p">(</span><span class="n">pid</span><span class="p">);</span>
+	
+	<span class="c1">// 如果是创建线程
+</span>	<span class="k">if</span> <span class="p">(</span><span class="n">clone_flags</span> <span class="o">&amp;</span> <span class="n">CLONE_THREAD</span><span class="p">)</span> <span class="p">{</span>
+		<span class="n">p</span><span class="o">-&gt;</span><span class="n">exit_signal</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+		
+		<span class="c1">// 线程组的leader设置为当前线程的leader
+</span>		<span class="n">p</span><span class="o">-&gt;</span><span class="n">group_leader</span> <span class="o">=</span> <span class="n">current</span><span class="o">-&gt;</span><span class="n">group_leader</span><span class="p">;</span>
+		
+		<span class="c1">// tgid是当前线程组的id，也就是main进程的pid
+</span>		<span class="n">p</span><span class="o">-&gt;</span><span class="n">tgid</span> <span class="o">=</span> <span class="n">current</span><span class="o">-&gt;</span><span class="n">tgid</span><span class="p">;</span>
+	<span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+		<span class="k">if</span> <span class="p">(</span><span class="n">clone_flags</span> <span class="o">&amp;</span> <span class="n">CLONE_PARENT</span><span class="p">)</span>
+			<span class="n">p</span><span class="o">-&gt;</span><span class="n">exit_signal</span> <span class="o">=</span> <span class="n">current</span><span class="o">-&gt;</span><span class="n">group_leader</span><span class="o">-&gt;</span><span class="n">exit_signal</span><span class="p">;</span>
+		<span class="k">else</span>
+			<span class="n">p</span><span class="o">-&gt;</span><span class="n">exit_signal</span> <span class="o">=</span> <span class="p">(</span><span class="n">clone_flags</span> <span class="o">&amp;</span> <span class="n">CSIGNAL</span><span class="p">);</span>
+			
+		<span class="c1">// 创建的是进程，自己是一个单独的线程组
+</span>		<span class="n">p</span><span class="o">-&gt;</span><span class="n">group_leader</span> <span class="o">=</span> <span class="n">p</span><span class="p">;</span>
+		
+		<span class="c1">// tgid和pid相同
+</span>		<span class="n">p</span><span class="o">-&gt;</span><span class="n">tgid</span> <span class="o">=</span> <span class="n">p</span><span class="o">-&gt;</span><span class="n">pid</span><span class="p">;</span>
+	<span class="p">}</span>
+
+    <span class="p">...</span>
+    
+	<span class="k">if</span> <span class="p">(</span><span class="n">likely</span><span class="p">(</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">pid</span><span class="p">))</span> <span class="p">{</span>
+		<span class="n">ptrace_init_task</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="p">(</span><span class="n">clone_flags</span> <span class="o">&amp;</span> <span class="n">CLONE_PTRACE</span><span class="p">)</span> <span class="o">||</span> <span class="n">trace</span><span class="p">);</span>
+
+		<span class="n">init_task_pid</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">PIDTYPE_PID</span><span class="p">,</span> <span class="n">pid</span><span class="p">);</span>
+		<span class="k">if</span> <span class="p">(</span><span class="n">thread_group_leader</span><span class="p">(</span><span class="n">p</span><span class="p">))</span> <span class="p">{</span>
+			<span class="n">init_task_pid</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">PIDTYPE_PGID</span><span class="p">,</span> <span class="n">task_pgrp</span><span class="p">(</span><span class="n">current</span><span class="p">));</span>
+			<span class="n">init_task_pid</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">PIDTYPE_SID</span><span class="p">,</span> <span class="n">task_session</span><span class="p">(</span><span class="n">current</span><span class="p">));</span>
+
+			<span class="k">if</span> <span class="p">(</span><span class="n">is_child_reaper</span><span class="p">(</span><span class="n">pid</span><span class="p">))</span> <span class="p">{</span>
+				<span class="n">ns_of_pid</span><span class="p">(</span><span class="n">pid</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">child_reaper</span> <span class="o">=</span> <span class="n">p</span><span class="p">;</span>
+				<span class="n">p</span><span class="o">-&gt;</span><span class="n">signal</span><span class="o">-&gt;</span><span class="n">flags</span> <span class="o">|=</span> <span class="n">SIGNAL_UNKILLABLE</span><span class="p">;</span>
+			<span class="p">}</span>
+
+			<span class="n">p</span><span class="o">-&gt;</span><span class="n">signal</span><span class="o">-&gt;</span><span class="n">leader_pid</span> <span class="o">=</span> <span class="n">pid</span><span class="p">;</span>
+			<span class="n">p</span><span class="o">-&gt;</span><span class="n">signal</span><span class="o">-&gt;</span><span class="n">tty</span> <span class="o">=</span> <span class="n">tty_kref_get</span><span class="p">(</span><span class="n">current</span><span class="o">-&gt;</span><span class="n">signal</span><span class="o">-&gt;</span><span class="n">tty</span><span class="p">);</span>
+			<span class="n">list_add_tail</span><span class="p">(</span><span class="o">&amp;</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">sibling</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">real_parent</span><span class="o">-&gt;</span><span class="n">children</span><span class="p">);</span>
+			<span class="n">list_add_tail_rcu</span><span class="p">(</span><span class="o">&amp;</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">tasks</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">init_task</span><span class="p">.</span><span class="n">tasks</span><span class="p">);</span>
+			
+			<span class="c1">// 将pid加入散列表
+</span>			<span class="n">attach_pid</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">PIDTYPE_PGID</span><span class="p">);</span>
+			<span class="n">attach_pid</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">PIDTYPE_SID</span><span class="p">);</span>
+			<span class="n">__this_cpu_inc</span><span class="p">(</span><span class="n">process_counts</span><span class="p">);</span>
+		<span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+			<span class="n">current</span><span class="o">-&gt;</span><span class="n">signal</span><span class="o">-&gt;</span><span class="n">nr_threads</span><span class="o">++</span><span class="p">;</span>
+			<span class="n">atomic_inc</span><span class="p">(</span><span class="o">&amp;</span><span class="n">current</span><span class="o">-&gt;</span><span class="n">signal</span><span class="o">-&gt;</span><span class="n">live</span><span class="p">);</span>
+			<span class="n">atomic_inc</span><span class="p">(</span><span class="o">&amp;</span><span class="n">current</span><span class="o">-&gt;</span><span class="n">signal</span><span class="o">-&gt;</span><span class="n">sigcnt</span><span class="p">);</span>
+			<span class="n">list_add_tail_rcu</span><span class="p">(</span><span class="o">&amp;</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">thread_group</span><span class="p">,</span>
+					  <span class="o">&amp;</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">group_leader</span><span class="o">-&gt;</span><span class="n">thread_group</span><span class="p">);</span>
+			<span class="n">list_add_tail_rcu</span><span class="p">(</span><span class="o">&amp;</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">thread_node</span><span class="p">,</span>
+					  <span class="o">&amp;</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">signal</span><span class="o">-&gt;</span><span class="n">thread_head</span><span class="p">);</span>
+		<span class="p">}</span>
+		<span class="c1">// 将pid加入PIDTYPE_PID这个散列表
+</span>		<span class="n">attach_pid</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">PIDTYPE_PID</span><span class="p">);</span>
+		<span class="c1">// 递增 nr_threads的值
+</span>		<span class="n">nr_threads</span><span class="o">++</span><span class="p">;</span>
+	<span class="p">}</span>
+
+	<span class="n">total_forks</span><span class="o">++</span><span class="p">;</span>
+	<span class="n">spin_unlock</span><span class="p">(</span><span class="o">&amp;</span><span class="n">current</span><span class="o">-&gt;</span><span class="n">sighand</span><span class="o">-&gt;</span><span class="n">siglock</span><span class="p">);</span>
+	<span class="n">syscall_tracepoint_update</span><span class="p">(</span><span class="n">p</span><span class="p">);</span>
+	<span class="n">write_unlock_irq</span><span class="p">(</span><span class="o">&amp;</span><span class="n">tasklist_lock</span><span class="p">);</span>
+
+	<span class="p">...</span>
+
+	<span class="c1">// 返回被创建的task结构体指针
+</span>	<span class="k">return</span> <span class="n">p</span><span class="p">;</span>
+	
+    <span class="p">...</span>
+    
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<p>同样，这里关键部分我已经有了注释我针对几个关键问题进行说明：</p>
+
+<ul>
+  <li><code class="highlighter-rouge">copy_process</code>的参数与<code class="highlighter-rouge">do_fork</code>的参数类型一模一样，参数也是几乎相同，除了<code class="highlighter-rouge">struct pid</code>那里是空</li>
+  <li><code class="highlighter-rouge">dup_task_struct</code>这个函数，会分配一个新的<code class="highlighter-rouge">task_struct</code>给子进程，但是这个<code class="highlighter-rouge">task_struct</code>是未初始化的，下面我将具体说说这个<code class="highlighter-rouge">dup_task_struct</code>:</li>
+  <li><code class="highlighter-rouge">copy_process</code>中会进行各种各样的初始化和信息检查，比如初始化自旋锁，初始化堆栈信息等等，同时会把新创建的子进程运行状态置为<code class="highlighter-rouge">TASK_RUNNING</code>（这里应该是就绪态）</li>
+  <li><code class="highlighter-rouge">copy_process</code>中，会通过<code class="highlighter-rouge">copy_thread</code>来初始化子进程的内核栈,下面也会进行具体说明</li>
+</ul>
+
+<h3 id="dup_task_struct">dup_task_struct</h3>
+
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="k">static</span> <span class="k">struct</span> <span class="n">task_struct</span> <span class="o">*</span><span class="nf">dup_task_struct</span><span class="p">(</span><span class="k">struct</span> <span class="n">task_struct</span> <span class="o">*</span><span class="n">orig</span><span class="p">)</span>
+<span class="p">{</span>
+	<span class="k">struct</span> <span class="n">task_struct</span> <span class="o">*</span><span class="n">tsk</span><span class="p">;</span>
+	<span class="k">struct</span> <span class="n">thread_info</span> <span class="o">*</span><span class="n">ti</span><span class="p">;</span>
+	<span class="kt">int</span> <span class="n">node</span> <span class="o">=</span> <span class="n">tsk_fork_get_node</span><span class="p">(</span><span class="n">orig</span><span class="p">);</span>
+	<span class="kt">int</span> <span class="n">err</span><span class="p">;</span>
+
+	<span class="c1">// 分配一个task_struct结点
+</span>	<span class="n">tsk</span> <span class="o">=</span> <span class="n">alloc_task_struct_node</span><span class="p">(</span><span class="n">node</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">tsk</span><span class="p">)</span>
+		<span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span>
+
+	<span class="c1">// 分配一个thread_info结点，其实内部分配了一个union，包含进程的内核栈
+</span>	<span class="c1">// 此时ti的值为栈底，在x86下为union的高地址处。
+</span>	<span class="n">ti</span> <span class="o">=</span> <span class="n">alloc_thread_info_node</span><span class="p">(</span><span class="n">tsk</span><span class="p">,</span> <span class="n">node</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">ti</span><span class="p">)</span>
+		<span class="k">goto</span> <span class="n">free_tsk</span><span class="p">;</span>
+
+	<span class="n">err</span> <span class="o">=</span> <span class="n">arch_dup_task_struct</span><span class="p">(</span><span class="n">tsk</span><span class="p">,</span> <span class="n">orig</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">err</span><span class="p">)</span>
+		<span class="k">goto</span> <span class="n">free_ti</span><span class="p">;</span>
+
+	<span class="c1">// 将栈底的值赋给新结点的stack
+</span>	<span class="n">tsk</span><span class="o">-&gt;</span><span class="n">stack</span> <span class="o">=</span> <span class="n">ti</span><span class="p">;</span>
+    
+    <span class="p">...</span>
+
+	<span class="cm">/*
+	 * One for us, one for whoever does the "release_task()" (usually
+	 * parent)
+	 */</span>
+	<span class="c1">// 将进程描述符的使用计数器置为2
+</span>	<span class="n">atomic_set</span><span class="p">(</span><span class="o">&amp;</span><span class="n">tsk</span><span class="o">-&gt;</span><span class="n">usage</span><span class="p">,</span> <span class="mi">2</span><span class="p">);</span>
+<span class="cp">#ifdef CONFIG_BLK_DEV_IO_TRACE
+</span>	<span class="n">tsk</span><span class="o">-&gt;</span><span class="n">btrace_seq</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+<span class="cp">#endif
+</span>	<span class="n">tsk</span><span class="o">-&gt;</span><span class="n">splice_pipe</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+	<span class="n">tsk</span><span class="o">-&gt;</span><span class="n">task_frag</span><span class="p">.</span><span class="n">page</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+
+	<span class="n">account_kernel_stack</span><span class="p">(</span><span class="n">ti</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+
+	<span class="c1">// 返回新申请的结点
+</span>	<span class="k">return</span> <span class="n">tsk</span><span class="p">;</span>
+
+<span class="nl">free_ti:</span>
+	<span class="n">free_thread_info</span><span class="p">(</span><span class="n">ti</span><span class="p">);</span>
+<span class="nl">free_tsk:</span>
+	<span class="n">free_task_struct</span><span class="p">(</span><span class="n">tsk</span><span class="p">);</span>
+	<span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<blockquote>
+  <ul>
+    <li>这其中有个比较重要的结构struct thread_info,但是在内部分配时，其实是一个union(联合体),这个union包括了一个内核堆栈,其结构如下图(图来自Understanding Linux kernel 3th)</li>
+  </ul>
+</blockquote>
+
+<h3 id="copy_thread">copy_thread</h3>
+
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="c1">// 初始化子进程的内核栈
+</span><span class="kt">int</span> <span class="nf">copy_thread</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">clone_flags</span><span class="p">,</span> <span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">sp</span><span class="p">,</span>
+	<span class="kt">unsigned</span> <span class="kt">long</span> <span class="n">arg</span><span class="p">,</span> <span class="k">struct</span> <span class="n">task_struct</span> <span class="o">*</span><span class="n">p</span><span class="p">)</span>
+<span class="p">{</span>
+
+	<span class="c1">// 取出子进程的寄存器信息
+</span>	<span class="k">struct</span> <span class="n">pt_regs</span> <span class="o">*</span><span class="n">childregs</span> <span class="o">=</span> <span class="n">task_pt_regs</span><span class="p">(</span><span class="n">p</span><span class="p">);</span>
+	<span class="k">struct</span> <span class="n">task_struct</span> <span class="o">*</span><span class="n">tsk</span><span class="p">;</span>
+	<span class="kt">int</span> <span class="n">err</span><span class="p">;</span>
+
+	<span class="c1">// 栈顶 空栈
+</span>	<span class="n">p</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">sp</span> <span class="o">=</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span><span class="p">)</span> <span class="n">childregs</span><span class="p">;</span>
+	<span class="n">p</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">sp0</span> <span class="o">=</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span><span class="p">)</span> <span class="p">(</span><span class="n">childregs</span><span class="o">+</span><span class="mi">1</span><span class="p">);</span>
+	<span class="n">memset</span><span class="p">(</span><span class="n">p</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">ptrace_bps</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">p</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">ptrace_bps</span><span class="p">));</span>
+
+	<span class="c1">// 如果是创建的内核线程
+</span>	<span class="k">if</span> <span class="p">(</span><span class="n">unlikely</span><span class="p">(</span><span class="n">p</span><span class="o">-&gt;</span><span class="n">flags</span> <span class="o">&amp;</span> <span class="n">PF_KTHREAD</span><span class="p">))</span> <span class="p">{</span>
+		<span class="cm">/* kernel thread */</span>
+		<span class="n">memset</span><span class="p">(</span><span class="n">childregs</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="k">struct</span> <span class="n">pt_regs</span><span class="p">));</span>
+		<span class="c1">// 内核线程开始执行的位置
+</span>		<span class="n">p</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">ip</span> <span class="o">=</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span><span class="p">)</span> <span class="n">ret_from_kernel_thread</span><span class="p">;</span>
+		<span class="n">task_user_gs</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="o">=</span> <span class="n">__KERNEL_STACK_CANARY</span><span class="p">;</span>
+		<span class="n">childregs</span><span class="o">-&gt;</span><span class="n">ds</span> <span class="o">=</span> <span class="n">__USER_DS</span><span class="p">;</span>
+		<span class="n">childregs</span><span class="o">-&gt;</span><span class="n">es</span> <span class="o">=</span> <span class="n">__USER_DS</span><span class="p">;</span>
+		<span class="n">childregs</span><span class="o">-&gt;</span><span class="n">fs</span> <span class="o">=</span> <span class="n">__KERNEL_PERCPU</span><span class="p">;</span>
+		<span class="n">childregs</span><span class="o">-&gt;</span><span class="n">bx</span> <span class="o">=</span> <span class="n">sp</span><span class="p">;</span>	<span class="cm">/* function */</span>
+		<span class="n">childregs</span><span class="o">-&gt;</span><span class="n">bp</span> <span class="o">=</span> <span class="n">arg</span><span class="p">;</span>
+		<span class="n">childregs</span><span class="o">-&gt;</span><span class="n">orig_ax</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+		<span class="n">childregs</span><span class="o">-&gt;</span><span class="n">cs</span> <span class="o">=</span> <span class="n">__KERNEL_CS</span> <span class="o">|</span> <span class="n">get_kernel_rpl</span><span class="p">();</span>
+		<span class="n">childregs</span><span class="o">-&gt;</span><span class="n">flags</span> <span class="o">=</span> <span class="n">X86_EFLAGS_IF</span> <span class="o">|</span> <span class="n">X86_EFLAGS_FIXED</span><span class="p">;</span>
+		<span class="n">p</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">io_bitmap_ptr</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+		<span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+	<span class="p">}</span>
+
+	<span class="c1">// 将当前进程的寄存器信息复制给子进程
+</span>	<span class="o">*</span><span class="n">childregs</span> <span class="o">=</span> <span class="o">*</span><span class="n">current_pt_regs</span><span class="p">();</span>
+	<span class="c1">// 子进程的eax置为0，所以fork的子进程返回值为0
+</span>	<span class="n">childregs</span><span class="o">-&gt;</span><span class="n">ax</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">sp</span><span class="p">)</span>
+		<span class="n">childregs</span><span class="o">-&gt;</span><span class="n">sp</span> <span class="o">=</span> <span class="n">sp</span><span class="p">;</span>
+
+	<span class="c1">// 子进程从ret_from_fork开始执行
+</span>	<span class="n">p</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">ip</span> <span class="o">=</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span><span class="p">)</span> <span class="n">ret_from_fork</span><span class="p">;</span>
+	<span class="n">task_user_gs</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="o">=</span> <span class="n">get_user_gs</span><span class="p">(</span><span class="n">current_pt_regs</span><span class="p">());</span>
+
+	<span class="n">p</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">io_bitmap_ptr</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+	<span class="n">tsk</span> <span class="o">=</span> <span class="n">current</span><span class="p">;</span>
+	<span class="n">err</span> <span class="o">=</span> <span class="o">-</span><span class="n">ENOMEM</span><span class="p">;</span>
+
+	<span class="c1">// 如果父进程使用IO权限位图，那么子进程获得该位图的一个拷贝
+</span>	<span class="k">if</span> <span class="p">(</span><span class="n">unlikely</span><span class="p">(</span><span class="n">test_tsk_thread_flag</span><span class="p">(</span><span class="n">tsk</span><span class="p">,</span> <span class="n">TIF_IO_BITMAP</span><span class="p">)))</span> <span class="p">{</span>
+		<span class="n">p</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">io_bitmap_ptr</span> <span class="o">=</span> <span class="n">kmemdup</span><span class="p">(</span><span class="n">tsk</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">io_bitmap_ptr</span><span class="p">,</span>
+						<span class="n">IO_BITMAP_BYTES</span><span class="p">,</span> <span class="n">GFP_KERNEL</span><span class="p">);</span>
+		<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">p</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">io_bitmap_ptr</span><span class="p">)</span> <span class="p">{</span>
+			<span class="n">p</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">io_bitmap_max</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+			<span class="k">return</span> <span class="o">-</span><span class="n">ENOMEM</span><span class="p">;</span>
+		<span class="p">}</span>
+		<span class="n">set_tsk_thread_flag</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">TIF_IO_BITMAP</span><span class="p">);</span>
+	<span class="p">}</span>
+
+	<span class="p">...</span>
+	
+	<span class="k">return</span> <span class="n">err</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<ul>
+  <li>这里的过程基本就是给新的进程的各种运行时状态进行初始化，比如寄存器信息（通过父进程的寄存器信息来初始化，但是eip会是个例外，eip将会取决于最后子进程将会从哪里开始执行），栈会被置空未初始化状态</li>
+  <li>在代码中，有两段这样的代码<code class="highlighter-rouge">p-&gt;thread.ip = (unsigned long) ret_from_kernel_thread;
+p-&gt;thread.ip = (unsigned long) ret_from_fork;</code>，<strong>这里表面了在<code class="highlighter-rouge">fork</code>完成之后，新进程将会在哪里开始执行</strong>,如果新的创建的新的线程是内核线程，那么将会从<code class="highlighter-rouge">ret_from_kernel_thread</code>开始执行，但是如果是普通的用户态线程，则将会从<code class="highlighter-rouge">p-&gt;thread.ip = (unsigned long) ret_from_fork</code>开始执行.</li>
+</ul>
+
+<h1 id="总结">总结</h1>
+<p>通过实验和fork系统调用的分析，让我认识到除了Linux系统中最开始启动时，创建的第一个始祖进程外，从<code class="highlighter-rouge">init进程</code>开始，其他所有的进程的创建方式均是通过<code class="highlighter-rouge">fork</code>，<code class="highlighter-rouge">clone</code>,<code class="highlighter-rouge">vfork</code>的方式，而他们又能够有归结到<code class="highlighter-rouge">do_fork</code>,就想孟宁老师说得道生一，一生二，二生三这样.</p>
+
+<hr />
+<h2 id="参考资料">参考资料</h2>
+<ul>
+  <li>Understanding The Linux Kernel, the 3rd edtion</li>
+  <li>Linux内核设计与实现，第三版，Robert Love, 机械工业出版社</li>
+</ul>
+
+
+                <hr>
+
+                <ul class="pager">
+                    
+                    <li class="previous">
+                        <a href="/2015/04/06/Neteasy-cloud-linux-kernel/" data-toggle="tooltip" data-placement="top" title="通过分析system_call中断处理过程来深入理解系统调用">&larr; Previous Post</a>
+                    </li>
+                    
+                    
+                    <li class="next">
+                        <a href="/2015/04/19/Neteasy-cloud-linux-kernel/" data-toggle="tooltip" data-placement="top" title="通过分析exevc系统调用处理过程来理解Linux内核如何装载和启动一个可执行程序">Next Post &rarr;</a>
+                    </li>
+                    
+                </ul>
+
+            </div>
+        </div>
+    </div>
+</article>
+
+<hr>
+
+
+    <!-- Footer -->
+<footer>
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+                <ul class="list-inline text-center">
+                    <li>
+                        <a href="/feed.xml">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-rss fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="https://twitter.com/wcgwuxinwei">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-twitter fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                    
+                    <li>
+                        <a href="https://www.facebook.com/mark.woo.1990">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-facebook fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                    
+                    <li>
+                        <a href="https://github.com/wuxinwei">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-github fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                </ul>
+                <p class="copyright text-muted">Copyright &copy; Fly Your Mind 2017</p>
+            </div>
+        </div>
+    </div>
+</footer>
+
+<!-- jQuery -->
+<script src="/js/jquery.min.js "></script>
+
+<!-- Bootstrap Core JavaScript -->
+<script src="/js/bootstrap.min.js "></script>
+
+<!-- Custom Theme JavaScript -->
+<script src="/js/prettify.js"></script>
+
+
+</body>
+
+</html>

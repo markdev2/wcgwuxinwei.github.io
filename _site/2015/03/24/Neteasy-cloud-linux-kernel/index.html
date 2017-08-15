@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Mark Woo Personal Blog">
+
+    <title>通过分析一个简化版时间片轮转多道程序内核代码来认识操作系统中的进程调度 - Fly Your Mind</title>
+
+    <link rel="canonical" href="http://localhost:4000/2015/03/24/Neteasy-cloud-linux-kernel/">
+
+    <!-- Bootstrap Core CSS -->
+    <link rel="stylesheet" href="/css/bootstrap.min.css">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/css/clean-blog.css">
+
+    <!-- Pygments Github CSS -->
+    <link rel="stylesheet" href="/css/syntax.css">
+
+    <!-- Custom Fonts -->
+    <link href="http://maxcdn.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.min.css" rel="stylesheet" type="text/css">
+    <link href='http://fonts.googleapis.com/css?family=Lora:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
+    <link href='http://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800' rel='stylesheet' type='text/css'>
+
+    <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+    <!--[if lt IE 9]>
+        <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+        <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+    <![endif]-->
+
+    <!-- google Prettify CSS -->
+	<link rel="stylesheet" href="/css/prettify.css">
+
+</head>
+
+
+<body>
+
+    <!-- Navigation -->
+<nav class="navbar navbar-default navbar-custom navbar-fixed-top">
+    <div class="container-fluid">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header page-scroll">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="/">Fly Your Mind</a>
+        </div>
+
+        <!-- Collect the nav links, forms, and other content for toggling -->
+        <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+            <ul class="nav navbar-nav navbar-right">
+                <li>
+                    <a href="/">Home</a>
+                </li>
+                
+                <li>
+                    <a href="/about/">Resume</a>
+                </li>
+                
+                <li>
+                    <a href="/contact/">Contact</a>
+                </li>
+                
+            </ul>
+        </div>
+        <!-- /.navbar-collapse -->
+    </div>
+    <!-- /.container -->
+</nav>
+
+
+    <!-- Post Header -->
+<header class="intro-header" style="background-image: url('/img/home-bg.jpg')">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+                <div class="post-heading">
+                    <h1>通过分析一个简化版时间片轮转多道程序内核代码来认识操作系统中的进程调度</h1>
+                    
+                    <h2 class="subheading">网易云课堂Linux内核分析课程</h2>
+                    
+                    <span class="meta">Posted by MarkWoo on March 24, 2015</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- Post Content -->
+<article>
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+
+				<h1 id="通过分析一个简化版时间片轮转多道程序内核代码来认识操作系统中的进程调度">通过分析一个简化版时间片轮转多道程序内核代码来认识操作系统中的进程调度</h1>
+<h2 id="前言说明">前言说明</h2>
+<p>本篇为网易云课堂<code class="highlighter-rouge">Linux内核分析</code>课程的第二周作业，我讲将围绕一个时间片轮转，进程切换的执行过程来分析该代码来认识理解<strong>操作系统的进程工作情况</strong>，文中的代码来自USTC孟宁老师的<code class="highlighter-rouge">Github</code>，地址为[mykernel][1]</p>
+
+<h2 id="本篇关键词内联汇编进程调度时间片进程切换">本篇关键词：<code class="highlighter-rouge">内联汇编</code>，<code class="highlighter-rouge">进程调度</code>，<code class="highlighter-rouge">时间片</code>，<code class="highlighter-rouge">进程切换</code></h2>
+
+<h2 id="分析">分析</h2>
+<h2 id="分析说明">分析说明</h2>
+<p>分析过程将把主要精力放在关键代码的分析上，代码分析的方式我是采用注释说明的方法，这样比较简洁直观，对于一些关键过程我会在代码后面采用图文说明的方式。</p>
+
+<hr />
+
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="cp">#define MAX_TASK_NUM        4  //最大进程数
+#define KERNEL_STACK_SIZE   1024*8 //内核堆栈空间大小
+</span>
+<span class="cm">/* CPU-specific state of this task */</span>
+<span class="k">struct</span> <span class="n">Thread</span> <span class="p">{</span>
+    <span class="kt">unsigned</span> <span class="kt">long</span>		<span class="n">ip</span><span class="p">;</span> <span class="c1">//用于保存进程eip内容
+</span>    <span class="kt">unsigned</span> <span class="kt">long</span>		<span class="n">sp</span><span class="p">;</span> <span class="c1">//用于保存进程esp内容
+</span><span class="p">};</span>
+
+<span class="k">typedef</span> <span class="k">struct</span> <span class="n">PCB</span><span class="p">{</span>
+    <span class="kt">int</span> <span class="n">pid</span><span class="p">;</span> <span class="c1">//进程号
+</span>    <span class="c1">//进程运行状态
+</span>    <span class="k">volatile</span> <span class="kt">long</span> <span class="n">state</span><span class="p">;</span>	<span class="cm">/* -1 unrunnable, 0 runnable, &gt;0 stopped */</span> 
+    <span class="kt">char</span> <span class="n">stack</span><span class="p">[</span><span class="n">KERNEL_STACK_SIZE</span><span class="p">];</span>
+    <span class="cm">/* CPU-specific state of this task */</span>
+    <span class="k">struct</span> <span class="n">Thread</span> <span class="kr">thread</span><span class="p">;</span>
+    <span class="c1">//进程执行的入口地址
+</span>    <span class="kt">unsigned</span> <span class="kt">long</span>	<span class="n">task_entry</span><span class="p">;</span>
+    <span class="c1">//指向下一个进程PCB
+</span>    <span class="k">struct</span> <span class="n">PCB</span> <span class="o">*</span><span class="n">next</span><span class="p">;</span>
+<span class="p">}</span><span class="n">tPCB</span><span class="p">;</span>
+
+<span class="c1">//进程调度
+</span><span class="kt">void</span> <span class="n">my_schedule</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+</code></pre>
+</div>
+
+<ul>
+  <li><code class="highlighter-rouge">linux/mykernel/mypcb.h</code></li>
+  <li>以上这段代码定义了进程执行所需要的一些必要信息，比如<code class="highlighter-rouge">pid</code>(进程号)，<code class="highlighter-rouge">stack</code>(进程堆栈),<code class="highlighter-rouge">task_entry</code>(进程执行的入口地址)等，通过这个文件我们可以知道这些信息都保存在一个叫做<code class="highlighter-rouge">PCB</code>(进程控制块, process control block)的数据结构中，这个头文件还定义了线程的一些相关信息，如：ip，sp等,结合之前上的知识，和改头文件，我们可以认识到进程真正的执行单元是<strong>线程</strong>,线程中包含了执行是所需要的一些关键信息，堆栈顶指针sp,和指令指针ip</li>
+</ul>
+
+<hr />
+
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="cp">#include "mypcb.h"
+</span><span class="n">tPCB</span> <span class="n">task</span><span class="p">[</span><span class="n">MAX_TASK_NUM</span><span class="p">];</span>
+<span class="n">tPCB</span> <span class="o">*</span> <span class="n">my_current_task</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span> <span class="c1">//当前进程
+</span><span class="k">volatile</span> <span class="kt">int</span> <span class="n">my_need_sched</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="c1">//是否需要调度
+</span>
+<span class="kt">void</span> <span class="n">my_process</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+
+<span class="cm">/* 启动内核 */</span>
+<span class="kt">void</span> <span class="n">__init</span> <span class="nf">my_start_kernel</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="kt">int</span> <span class="n">pid</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">i</span><span class="p">;</span>
+    <span class="cm">/* Initialize process 0*/</span>
+    <span class="n">task</span><span class="p">[</span><span class="n">pid</span><span class="p">].</span><span class="n">pid</span> <span class="o">=</span> <span class="n">pid</span><span class="p">;</span>
+    <span class="n">task</span><span class="p">[</span><span class="n">pid</span><span class="p">].</span><span class="n">state</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span><span class="cm">/* -1 unrunnable, 0 runnable, &gt;0 stopped */</span>
+    <span class="c1">// 设置进程执行入口到my_process
+</span>    <span class="n">task</span><span class="p">[</span><span class="n">pid</span><span class="p">].</span><span class="n">task_entry</span> <span class="o">=</span> <span class="n">task</span><span class="p">[</span><span class="n">pid</span><span class="p">].</span><span class="kr">thread</span><span class="p">.</span><span class="n">ip</span> <span class="o">=</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span><span class="p">)</span><span class="n">my_process</span><span class="p">;</span>
+    <span class="c1">// 设置堆栈栈顶指针
+</span>    <span class="n">task</span><span class="p">[</span><span class="n">pid</span><span class="p">].</span><span class="kr">thread</span><span class="p">.</span><span class="n">sp</span> <span class="o">=</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span><span class="p">)</span><span class="o">&amp;</span><span class="n">task</span><span class="p">[</span><span class="n">pid</span><span class="p">].</span><span class="n">stack</span><span class="p">[</span><span class="n">KERNEL_STACK_SIZE</span><span class="o">-</span><span class="mi">1</span><span class="p">];</span>
+    <span class="n">task</span><span class="p">[</span><span class="n">pid</span><span class="p">].</span><span class="n">next</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">task</span><span class="p">[</span><span class="n">pid</span><span class="p">];</span>
+    <span class="cm">/*fork more process */</span>
+    <span class="k">for</span><span class="p">(</span><span class="n">i</span><span class="o">=</span><span class="mi">1</span><span class="p">;</span><span class="n">i</span><span class="o">&lt;</span><span class="n">MAX_TASK_NUM</span><span class="p">;</span><span class="n">i</span><span class="o">++</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="c1">// 复制init process的地址空间给新的进程
+</span>        <span class="n">memcpy</span><span class="p">(</span><span class="o">&amp;</span><span class="n">task</span><span class="p">[</span><span class="n">i</span><span class="p">],</span><span class="o">&amp;</span><span class="n">task</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="k">sizeof</span><span class="p">(</span><span class="n">tPCB</span><span class="p">));</span>
+        <span class="n">task</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">pid</span> <span class="o">=</span> <span class="n">i</span><span class="p">;</span>
+        <span class="n">task</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">state</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+        <span class="n">task</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="kr">thread</span><span class="p">.</span><span class="n">sp</span> <span class="o">=</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">long</span><span class="p">)</span><span class="o">&amp;</span><span class="n">task</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">stack</span><span class="p">[</span><span class="n">KERNEL_STACK_SIZE</span><span class="o">-</span><span class="mi">1</span><span class="p">];</span>
+        <span class="n">task</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">next</span> <span class="o">=</span> <span class="n">task</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">].</span><span class="n">next</span><span class="p">;</span>
+        <span class="n">task</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">].</span><span class="n">next</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">task</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+    <span class="p">}</span>
+    <span class="cm">/* start process 0 by task[0] */</span>
+    <span class="n">pid</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="n">my_current_task</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">task</span><span class="p">[</span><span class="n">pid</span><span class="p">];</span>
+    <span class="cm">/*
+	 * 下面的内联汇编的过程是task[pid]中的线程sp传递给系统堆栈中的esp,
+	 * 线程的ip传递给给系统的eip
+	 * pid为0的进程的ip和sp先输入cx和dx中暂存起来，以便调用
+	 * 我的理解：
+	 * 为了让进程在硬件内存空间中运行起来，必须将准备的的进程PCB信息注册给计算机中相应的内存
+	 */</span>
+	<span class="n">asm</span> <span class="k">volatile</span><span class="p">(</span>
+    	<span class="s">"movl %1,%%esp</span><span class="se">\n\t</span><span class="s">"</span> 	<span class="cm">/* set task[pid].thread.sp to esp */</span>
+    	<span class="s">"pushl %1</span><span class="se">\n\t</span><span class="s">"</span> 	        <span class="cm">/* push ebp */</span>
+    	<span class="s">"pushl %0</span><span class="se">\n\t</span><span class="s">"</span> 	        <span class="cm">/* push task[pid].thread.ip */</span>
+    	<span class="s">"ret</span><span class="se">\n\t</span><span class="s">"</span> 	            <span class="cm">/* pop task[pid].thread.ip to eip */</span>
+    	<span class="s">"popl %%ebp</span><span class="se">\n\t</span><span class="s">"</span>
+    	<span class="o">:</span> 
+    	<span class="o">:</span> <span class="s">"c"</span> <span class="p">(</span><span class="n">task</span><span class="p">[</span><span class="n">pid</span><span class="p">].</span><span class="kr">thread</span><span class="p">.</span><span class="n">ip</span><span class="p">),</span><span class="s">"d"</span> <span class="p">(</span><span class="n">task</span><span class="p">[</span><span class="n">pid</span><span class="p">].</span><span class="kr">thread</span><span class="p">.</span><span class="n">sp</span><span class="p">)</span>	<span class="cm">/* input c or d mean %ecx/%edx*/</span>
+	<span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">//进程执行
+</span><span class="kt">void</span> <span class="nf">my_process</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="k">while</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">i</span><span class="o">++</span><span class="p">;</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">i</span><span class="o">%</span><span class="mi">10000000</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="n">printk</span><span class="p">(</span><span class="n">KERN_NOTICE</span> <span class="s">"this is process %d -</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">my_current_task</span><span class="o">-&gt;</span><span class="n">pid</span><span class="p">);</span>
+            <span class="k">if</span><span class="p">(</span><span class="n">my_need_sched</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="p">{</span>
+                <span class="n">my_need_sched</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        	    <span class="n">my_schedule</span><span class="p">();</span>
+        	<span class="p">}</span>
+        	<span class="n">printk</span><span class="p">(</span><span class="n">KERN_NOTICE</span> <span class="s">"this is process %d +</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">my_current_task</span><span class="o">-&gt;</span><span class="n">pid</span><span class="p">);</span>
+        <span class="p">}</span>     
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre>
+</div>
+
+<ul>
+  <li><code class="highlighter-rouge">Linux/mykernel/mymain.c</code>
+以上这段代码包含了内核的启动过程，进程的创建和启动运行（这里sp指的是PCB中的sp，esp指硬件esp），这里我将会进行代码块的逐个分析：
+    <ul>
+      <li><code class="highlighter-rouge">void __init my_start_kernel(void)</code>从这个函数的命名上可以看出，这个函数负责了内核初始化和内核的启动过程，我们都知道Linux内核最开始启动执行的进程叫做<code class="highlighter-rouge">init</code>进程,该进程的<code class="highlighter-rouge">PID</code>为<code class="highlighter-rouge">0</code>,从这个函数的代码中我们可以看出其他进程的创建都是通过<code class="highlighter-rouge">fork init</code>进程，而且各个进程启动顺序是一种线性的关系</li>
+      <li><code class="highlighter-rouge">void my_process(void)</code> 该函数是进程的执行部分，可以从代码中看出，每个进程在每执行1000万次时进行一次进程调度（实质是进程切换，调用my_schedule()），剥夺当前进程获取CPU时间片的权力</li>
+      <li>这里有一段开始启动<code class="highlighter-rouge">init</code>进程的关键内联汇编代码, 首先，将<code class="highlighter-rouge">init</code>进程的sp移入esp中，将sp放入堆栈栈底（即初始esp指向的位置），这里这样做的目的是为了最后那一步<code class="highlighter-rouge">popl %%ebp\n\t</code>时可以将sp也移入ebp中，然后将进程的ip放入堆栈中（存有sp的下一个位置），通过<code class="highlighter-rouge">ret</code>将ip放入eip中。这段内联汇编代码执行完后，<code class="highlighter-rouge">init</code>进程完成了初始化，可以内核开始启动运行</li>
+    </ul>
+  </li>
+</ul>
+
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="n">asm</span> <span class="k">volatile</span><span class="p">(</span>
+    	<span class="s">"movl %1,%%esp</span><span class="se">\n\t</span><span class="s">"</span> 	<span class="cm">/* 将输入的task[pid].thread.sp放入esp中 */</span> 
+    	<span class="s">"pushl %1</span><span class="se">\n\t</span><span class="s">"</span> 	        <span class="cm">/* 将输入的task[pid].thread.sp放入栈顶位置中存储起来 */</span>
+    	<span class="s">"pushl %0</span><span class="se">\n\t</span><span class="s">"</span> 	        <span class="cm">/* 将输入的task[pid].thread.ip放入栈顶位置中存储起来 */</span>
+    	<span class="s">"ret</span><span class="se">\n\t</span><span class="s">"</span> 	            <span class="cm">/* 弹出栈顶的task[pid].thread.ip放入eip中 */</span>
+    	<span class="s">"popl %%ebp</span><span class="se">\n\t</span><span class="s">"</span>        <span class="cm">/* 初始化ebp */</span>
+    	<span class="o">:</span> 
+    	<span class="o">:</span> <span class="s">"c"</span> <span class="p">(</span><span class="n">task</span><span class="p">[</span><span class="n">pid</span><span class="p">].</span><span class="kr">thread</span><span class="p">.</span><span class="n">ip</span><span class="p">),</span><span class="s">"d"</span> <span class="p">(</span><span class="n">task</span><span class="p">[</span><span class="n">pid</span><span class="p">].</span><span class="kr">thread</span><span class="p">.</span><span class="n">sp</span><span class="p">)</span>	<span class="cm">/* input c or d mean %ecx/%edx*/</span>
+	<span class="p">);</span>
+</code></pre>
+</div>
+
+<hr />
+
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="cp">#include "mypcb.h"
+</span>
+<span class="k">extern</span> <span class="n">tPCB</span> <span class="n">task</span><span class="p">[</span><span class="n">MAX_TASK_NUM</span><span class="p">];</span>
+<span class="k">extern</span> <span class="n">tPCB</span> <span class="o">*</span> <span class="n">my_current_task</span><span class="p">;</span>
+<span class="k">extern</span> <span class="k">volatile</span> <span class="kt">int</span> <span class="n">my_need_sched</span><span class="p">;</span>
+<span class="k">volatile</span> <span class="kt">int</span> <span class="n">time_count</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+<span class="cm">/*
+ * Called by timer interrupt.
+ * it runs in the name of current running process,
+ * so it use kernel stack of current running process
+ */</span>
+<span class="c1">//时钟中断
+</span><span class="kt">void</span> <span class="nf">my_timer_handler</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="cp">#if 1
+</span>    <span class="k">if</span><span class="p">(</span><span class="n">time_count</span><span class="o">%</span><span class="mi">1000</span> <span class="o">==</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">my_need_sched</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">)</span> <span class="cm">/* 这里判断是否调用了1000次时钟中断且还没有进行过进程调度 */</span>
+    <span class="p">{</span>
+        <span class="n">printk</span><span class="p">(</span><span class="n">KERN_NOTICE</span> <span class="s">"&gt;&gt;&gt;my_timer_handler here&lt;&lt;&lt;</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+        <span class="n">my_need_sched</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+    <span class="p">}</span> 
+    <span class="n">time_count</span> <span class="o">++</span> <span class="p">;</span>  
+<span class="cp">#endif
+</span>    <span class="k">return</span><span class="p">;</span>  	
+<span class="p">}</span>
+
+<span class="c1">//进程调度
+</span><span class="kt">void</span> <span class="nf">my_schedule</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">tPCB</span> <span class="o">*</span> <span class="n">next</span><span class="p">;</span>
+    <span class="n">tPCB</span> <span class="o">*</span> <span class="n">prev</span><span class="p">;</span>
+    <span class="k">if</span><span class="p">(</span><span class="n">my_current_task</span> <span class="o">==</span> <span class="nb">NULL</span> 
+        <span class="o">||</span> <span class="n">my_current_task</span><span class="o">-&gt;</span><span class="n">next</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span>
+    <span class="p">{</span>
+    	<span class="k">return</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="n">printk</span><span class="p">(</span><span class="n">KERN_NOTICE</span> <span class="s">"&gt;&gt;&gt;my_schedule&lt;&lt;&lt;</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="cm">/* schedule */</span>
+    <span class="n">next</span> <span class="o">=</span> <span class="n">my_current_task</span><span class="o">-&gt;</span><span class="n">next</span><span class="p">;</span> <span class="c1">//next指向当前进程的下一个进程
+</span>    <span class="n">prev</span> <span class="o">=</span> <span class="n">my_current_task</span><span class="p">;</span> <span class="c1">//prev指向当前进程
+</span>    <span class="k">if</span><span class="p">(</span><span class="n">next</span><span class="o">-&gt;</span><span class="n">state</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span><span class="cm">/* -1 unrunnable, 0 runnable, &gt;0 stopped */</span>
+    <span class="p">{</span>
+        <span class="cm">/* 以下内联汇编的代码含义：
+		 * 适用正在运行的进程
+		 * 首先保存当前进程的执行上下文,也就是堆栈信息(主要是ebp,esp,eip）放入当前进程的tPCB中，
+		 * 恢复将要运行的进程的执行上下文，即堆栈信息（ebp,esp,eip）
+		 */</span>
+    	<span class="cm">/* switch to next process */</span>
+    	<span class="n">asm</span> <span class="k">volatile</span><span class="p">(</span>	
+        	<span class="s">"pushl %%ebp</span><span class="se">\n\t</span><span class="s">"</span> 	    <span class="cm">/* save ebp */</span>
+        	<span class="s">"movl %%esp,%0</span><span class="se">\n\t</span><span class="s">"</span> 	<span class="cm">/* save esp */</span>
+        	<span class="s">"movl %2,%%esp</span><span class="se">\n\t</span><span class="s">"</span>     <span class="cm">/* restore  esp */</span>
+        	<span class="s">"movl $1f,%1</span><span class="se">\n\t</span><span class="s">"</span>       <span class="cm">/* save eip */</span>	
+        	<span class="s">"pushl %3</span><span class="se">\n\t</span><span class="s">"</span> 
+        	<span class="s">"ret</span><span class="se">\n\t</span><span class="s">"</span> 	            <span class="cm">/* restore  eip */</span>
+        	<span class="s">"1:</span><span class="se">\t</span><span class="s">"</span>                  <span class="cm">/* next process start here */</span>
+        	<span class="s">"popl %%ebp</span><span class="se">\n\t</span><span class="s">"</span>
+        	<span class="o">:</span> <span class="s">"=m"</span> <span class="p">(</span><span class="n">prev</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">sp</span><span class="p">),</span><span class="s">"=m"</span> <span class="p">(</span><span class="n">prev</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">ip</span><span class="p">)</span>
+        	<span class="o">:</span> <span class="s">"m"</span> <span class="p">(</span><span class="n">next</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">sp</span><span class="p">),</span><span class="s">"m"</span> <span class="p">(</span><span class="n">next</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">ip</span><span class="p">)</span>
+    	<span class="p">);</span> 
+    	<span class="n">my_current_task</span> <span class="o">=</span> <span class="n">next</span><span class="p">;</span> <span class="c1">//设置新进程给当前运行进程指针
+</span>    	<span class="n">printk</span><span class="p">(</span><span class="n">KERN_NOTICE</span> <span class="s">"&gt;&gt;&gt;switch %d to %d&lt;&lt;&lt;</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">prev</span><span class="o">-&gt;</span><span class="n">pid</span><span class="p">,</span><span class="n">next</span><span class="o">-&gt;</span><span class="n">pid</span><span class="p">);</span>   	
+    <span class="p">}</span>
+    <span class="k">else</span>
+    <span class="p">{</span>
+        <span class="n">next</span><span class="o">-&gt;</span><span class="n">state</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="n">my_current_task</span> <span class="o">=</span> <span class="n">next</span><span class="p">;</span>
+        <span class="n">printk</span><span class="p">(</span><span class="n">KERN_NOTICE</span> <span class="s">"&gt;&gt;&gt;switch %d to %d&lt;&lt;&lt;</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span><span class="n">prev</span><span class="o">-&gt;</span><span class="n">pid</span><span class="p">,</span><span class="n">next</span><span class="o">-&gt;</span><span class="n">pid</span><span class="p">);</span>
+        
+        <span class="cm">/* 以下内联汇编的代码含义：
+		 * 适用未运行的进程
+		 * 首先保存当前进程的执行上下文,也就是堆栈信息(主要是ebp,esp,eip）放入当前进程的tPCB中，
+		 * 之前的不同点是：由于未进程堆栈内是空的，所以esp和ebp都是指向同一个位置（即初始化位置）
+		 */</span>
+    	<span class="cm">/* switch to new process */</span>
+    	<span class="n">asm</span> <span class="k">volatile</span><span class="p">(</span>	
+        	<span class="s">"pushl %%ebp</span><span class="se">\n\t</span><span class="s">"</span> 	    <span class="cm">/* save ebp */</span>
+        	<span class="s">"movl %%esp,%0</span><span class="se">\n\t</span><span class="s">"</span> 	<span class="cm">/* save esp */</span>
+        	<span class="s">"movl %2,%%esp</span><span class="se">\n\t</span><span class="s">"</span>     <span class="cm">/* restore  esp */</span>
+        	<span class="s">"movl %2,%%ebp</span><span class="se">\n\t</span><span class="s">"</span>     <span class="cm">/* restore  ebp */</span>
+        	<span class="s">"movl $1f,%1</span><span class="se">\n\t</span><span class="s">"</span>       <span class="cm">/* save eip */</span>	
+        	<span class="s">"pushl %3</span><span class="se">\n\t</span><span class="s">"</span> 
+        	<span class="s">"ret</span><span class="se">\n\t</span><span class="s">"</span> 	            <span class="cm">/* restore  eip */</span>
+        	<span class="o">:</span> <span class="s">"=m"</span> <span class="p">(</span><span class="n">prev</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">sp</span><span class="p">),</span><span class="s">"=m"</span> <span class="p">(</span><span class="n">prev</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">ip</span><span class="p">)</span>
+        	<span class="o">:</span> <span class="s">"m"</span> <span class="p">(</span><span class="n">next</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">sp</span><span class="p">),</span><span class="s">"m"</span> <span class="p">(</span><span class="n">next</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">ip</span><span class="p">)</span>
+    	<span class="p">);</span>          
+    <span class="p">}</span>   
+    <span class="k">return</span><span class="p">;</span>	
+<span class="p">}</span>
+</code></pre>
+</div>
+<ul>
+  <li><code class="highlighter-rouge">linux/mykernel/myinterrupt</code></li>
+  <li>以上这段代码包含了时钟中断,进程切换
+    <ul>
+      <li><code class="highlighter-rouge">void my_timer_handler(void)</code> 该函数对已经进行了每1000次时钟中断，且没有进行过进程调度（运行权）的进程给予获取CPU时间片的权力</li>
+      <li><code class="highlighter-rouge">void my_schedule(void)</code> 该函数是进行进程调度的代码，这个函数主要包含一个大的if判断，这里是为了区分是正在运行的进程还是没有运行的进程，2个条件分支的相同点在于：<strong>都需要保存当前正在运行的进程上下文</strong>,不同点在于中间的2段内联汇编代码,其中第一段代码表示已经执行过的进程切换，其过程是首先保存当前进程运行时上下文（主要是堆栈信息，ebp，esp，eip等），然后恢复将要执行进程的运行时上下文。第二段代码的过程大体相同，不同点在于，由于第二段代码中的要切换的进程从来没有运行过，所以其堆栈内是空的，所以esp和ebp都是指向同一个位置（即堆栈初始化状态）</li>
+    </ul>
+  </li>
+</ul>
+
+<div class="language-c highlighter-rouge"><pre class="highlight"><code><span class="cm">/* switch to next process */</span>
+<span class="c1">//切换到正在运行的进程
+</span><span class="n">asm</span> <span class="k">volatile</span><span class="p">(</span>   
+    <span class="s">"pushl %%ebp</span><span class="se">\n\t</span><span class="s">"</span>       <span class="cm">/* 将当前ebp压入栈 */</span>
+    <span class="s">"movl %%esp,%0</span><span class="se">\n\t</span><span class="s">"</span>     <span class="cm">/* 保存当前进程的esp到prev-&gt;thread.sp中  */</span>
+    <span class="s">"movl %2,%%esp</span><span class="se">\n\t</span><span class="s">"</span>     <span class="cm">/* 将输入的next-&gt;thread.sp放入esp中 */</span>
+    <span class="s">"movl $1f,%1</span><span class="se">\n\t</span><span class="s">"</span>       <span class="cm">/* 保存当前进程的eip到prev-&gt;thread.ip中 */</span> 
+    <span class="s">"pushl %3</span><span class="se">\n\t</span><span class="s">"</span>          <span class="cm">/* 压入输入next-&gt;thread.ip入栈 */</span>
+    <span class="s">"ret</span><span class="se">\n\t</span><span class="s">"</span>               <span class="cm">/* next-&gt;thread.ip放入eip中，也就是恢复要切换的进程的eip */</span>
+    <span class="s">"1:</span><span class="se">\t</span><span class="s">"</span>                  <span class="cm">/* 开始执行下一个进程 */</span>
+    <span class="s">"popl %%ebp</span><span class="se">\n\t</span><span class="s">"</span>        <span class="cm">/* 初始化ebp */</span>
+    <span class="o">:</span> <span class="s">"=m"</span> <span class="p">(</span><span class="n">prev</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">sp</span><span class="p">),</span><span class="s">"=m"</span> <span class="p">(</span><span class="n">prev</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">ip</span><span class="p">)</span>
+    <span class="o">:</span> <span class="s">"m"</span> <span class="p">(</span><span class="n">next</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">sp</span><span class="p">),</span><span class="s">"m"</span> <span class="p">(</span><span class="n">next</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">ip</span><span class="p">)</span>
+<span class="p">);</span> 
+
+<span class="cm">/* switch to new process */</span>
+<span class="c1">//切换到没有运行的新进程
+</span><span class="n">asm</span> <span class="k">volatile</span><span class="p">(</span>   
+    <span class="s">"pushl %%ebp</span><span class="se">\n\t</span><span class="s">"</span>       
+    <span class="s">"movl %%esp,%0</span><span class="se">\n\t</span><span class="s">"</span>     
+    <span class="s">"movl %2,%%esp</span><span class="se">\n\t</span><span class="s">"</span>     <span class="cm">/* 将输入的next-&gt;thread.sp放入esp中 */</span>
+    <span class="s">"movl %2,%%ebp</span><span class="se">\n\t</span><span class="s">"</span>     <span class="cm">/* 将输入的next-&gt;thread.sp放入ebp中，这样堆栈就是一个初始化状态，即esp与ebp指向同一位置 */</span>
+    <span class="s">"movl $1f,%1</span><span class="se">\n\t</span><span class="s">"</span> 
+    <span class="s">"pushl %3</span><span class="se">\n\t</span><span class="s">"</span> 
+    <span class="s">"ret</span><span class="se">\n\t</span><span class="s">"</span>               <span class="cm">/* restore  eip */</span>
+    <span class="o">:</span> <span class="s">"=m"</span> <span class="p">(</span><span class="n">prev</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">sp</span><span class="p">),</span><span class="s">"=m"</span> <span class="p">(</span><span class="n">prev</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">ip</span><span class="p">)</span>
+    <span class="o">:</span> <span class="s">"m"</span> <span class="p">(</span><span class="n">next</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">sp</span><span class="p">),</span><span class="s">"m"</span> <span class="p">(</span><span class="n">next</span><span class="o">-&gt;</span><span class="kr">thread</span><span class="p">.</span><span class="n">ip</span><span class="p">)</span>
+<span class="p">);</span>
+</code></pre>
+</div>
+
+<h2 id="我的对操作系统以及进程一点认识">我的对操作系统以及进程一点认识</h2>
+<ul>
+  <li>操作系统的运行实体应该线程，非init进程在Linux内核中初始化，其资源分配的初始化都是通过复制init（pid为0）的资源空间开始的。</li>
+  <li>进程在操作系统中并不是一直占着CPU不放，而是通过时钟中断以及时间片轮转算法给予分配CPU时间片轮转执行的，时钟中断可以控制CPU时间片的分配，这样我们可以给优先级高比较急迫的进程任务让其有更多机会获取时间片，让其有更多的机会运行。</li>
+</ul>
+
+<h2 id="署名信息">署名信息</h2>
+<div class="highlighter-rouge"><pre class="highlight"><code>吴欣伟 原创作品转载请注明出处 《Linux内核分析》MOOC课程: http://mooc.study.163.com/course/USTC-1000029000   [1]: https://github.com/mengning/mykernel
+</code></pre>
+</div>
+
+
+                <hr>
+
+                <ul class="pager">
+                    
+                    <li class="previous">
+                        <a href="/2015/03/20/Neteasy-cloud-linux-kernel/" data-toggle="tooltip" data-placement="top" title="通过反汇编一个简单的C程序，分析汇编代码理解计算机是如何工作的">&larr; Previous Post</a>
+                    </li>
+                    
+                    
+                    <li class="next">
+                        <a href="/2015/03/25/Neteasy-cloud-linux-kernel/" data-toggle="tooltip" data-placement="top" title="通过从代码层面分析Linux内核启动来探知操作系统的启动过程">Next Post &rarr;</a>
+                    </li>
+                    
+                </ul>
+
+            </div>
+        </div>
+    </div>
+</article>
+
+<hr>
+
+
+    <!-- Footer -->
+<footer>
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+                <ul class="list-inline text-center">
+                    <li>
+                        <a href="/feed.xml">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-rss fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                    <li>
+                        <a href="https://twitter.com/wcgwuxinwei">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-twitter fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                    
+                    <li>
+                        <a href="https://www.facebook.com/mark.woo.1990">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-facebook fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                    
+                    <li>
+                        <a href="https://github.com/wuxinwei">
+                            <span class="fa-stack fa-lg">
+                                <i class="fa fa-circle fa-stack-2x"></i>
+                                <i class="fa fa-github fa-stack-1x fa-inverse"></i>
+                            </span>
+                        </a>
+                    </li>
+                    
+                </ul>
+                <p class="copyright text-muted">Copyright &copy; Fly Your Mind 2017</p>
+            </div>
+        </div>
+    </div>
+</footer>
+
+<!-- jQuery -->
+<script src="/js/jquery.min.js "></script>
+
+<!-- Bootstrap Core JavaScript -->
+<script src="/js/bootstrap.min.js "></script>
+
+<!-- Custom Theme JavaScript -->
+<script src="/js/prettify.js"></script>
+
+
+</body>
+
+</html>
